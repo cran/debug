@@ -1,9 +1,0 @@
-TO DO
-
-sys.parent etc. need to be substituted in default arg lists
-
-mtrace doesn't seem to (un-)mtrace inside the namespace version, though it does within the "visible" version
-
-tcl display of mlocal function headers
-
-do.in.envir

@@ -74,7 +74,7 @@ Various TCL/TK-related aspects of the code window can be altered:
 
 If you encounter this problem, try setting \code{options(shakeup.debug.windows=TRUE)} (also in \code{.First}). The price paid for setting this option, is that window focus will switch away from \R to the new code window when the latter is first created, which is mildly irritating. On MS-Windows, I have a fix for that too, but it requires a DLL written in Delphi not C, so I can't CRAN it; let me know if you are desperate.
 
-For ESS users: I'm not an Emacs user and so haven't tried ESS with the \pkg{debug} package myself, but a read-through of the ESS documentation suggests that at least one ESS variable may need changing to get the two working optimally. Please check the ESS documentation for further details on these points (and see also \code{README.mvbutils} in the \pkg{mvbutils} package). I will update this helpfile when I have more info on what works.
+For ESS users: I'm not an Emacs user and so haven't tried ESS with the \pkg{debug} package myself, but a read-through of the ESS documentation suggests that at least one ESS variable may need changing to get the two working optimally, as shown below. Please check the ESS documentation for further details on these points (and see also \code{README.mvbutils} in the \pkg{mvbutils} package). I will update this helpfile when I have more info on what works.
 
 \itemize{
 \item The prompt will change when the debugger is running, so you may want to change "inferior-ess-prompt". Prompts will always be of the form D(XXX)> where XXX is a positive integer.

@@ -3,3 +3,13 @@
 3/2/2004: getOption( "debug.command.recall") now defaults to FALSE if 'savehistory' would give an error (as it will under ESS, for example), or TRUE otherwise; used to default to TRUE always.
 
 4/2/2004: minor changes to documentation in 'README.debug', mainly to do with ESS.
+
+16/2/2005: added support for 'local.on.exit' to match 'mvbutils'
+
+  Fixed obscure bug to do with missing-mode objects in 'move.to.next.expr'
+  
+  Fixed buggy display of long subscript-replacement expressions
+  
+  Fixed bugs with 'skip'ping into exit code
+  
+  NAMESPACEd it-- with difficulty, owing to the unusual nature of 'debug'.

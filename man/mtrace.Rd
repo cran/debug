@@ -5,7 +5,7 @@
 \title{Interactive debugging}
 \description{\code{mtrace} sets or clears debugging mode for a function; \code{mtrace.off} clears debugging mode for all functions; \code{check.for.tracees} shows which functions are in debugging mode.}
 \usage{
-mtrace( fname, tracing=TRUE, char.fname, from=mvb.sys.parent())
+mtrace( fname, tracing=TRUE, char.fname, from=mvb.sys.parent(), update.tracees=TRUE)
 # Usual: mtrace( fname) or mtrace( fname, tracing=FALSE)
 mtrace.off()
 check.for.tracees( where=1)
@@ -16,6 +16,7 @@ check.for.tracees( where=1)
 \item{ char.fname}{(rarely used) if your function name is stored in a character object \code{x}, use \code{char.fname=x}}
 \item{ from}{where to start looking for \code{fname} (not usually needed)}
 \item{ where}{(character or integer) position in search path}
+\item{ update.tracees}{don't set this parameter! It's only for use by other functions}
 }
 \details{
 \code{mtrace(myfun)} modifies the body code of \code{myfun}, and also stores debugging information about \code{myfun} in \code{tracees$myfun}; \code{tracees} is stored in the \code{mvb.session.info} environment (consult \code{README.mvbutils} in the \pkg{mvbutils} package), and is visible from the command line. \code{mtrace} does not modify source code (or other) attributes, so \code{myfun} will "look" exactly the same afterwards. \code{mtrace(myfun,FALSE)} restores \code{myfun} to normal.
@@ -34,7 +35,11 @@ If you do see a "maybe saved before being un-mtraced?" error message when \code{
 
 If you use \code{fixr} to edit functions, \code{mtrace} will automatically be re-applied when an updated function file is sourced back in. Otherwise, you'll need to call \code{mtrace} manually after updating a function.
 
-The \code{from} argument is only used in the following situation. Suppose there is a function \code{f} which first defines functions \code{g} and \code{h}, then calls \code{g}. Now suppose you have \code{mtrace}d \code{g} and that \code{g} is running, with the code window displayed. If you want to \code{mtrace(h)}, the problem is that \code{h} is not visible from the frame of \code{g}. To tell \code{mtrace} where to find \code{g}, call \code{mtrace( h, from=sys.parent())}. You can also replace \code{sys.parent()} with the absolute frame number of \code{f}, if \code{f} has been \code{mtrace}d and its code window is visible). \code{mtrace} will then look through the enclosing environments of \code{from} until it finds a definition of \code{h}.
+The \code{from} argument is only used in the following situation. Suppose there is a function \code{f} which first defines functions \code{g} and \code{h}, then calls \code{g}. Now suppose you have \code{mtrace}d \code{g} and that \code{g} is running, with the code window displayed. If you want to \code{mtrace(h)}, the problem is that \code{h} is not visible from the frame of \code{g}. To tell \code{mtrace} where to find \code{g}, call \code{mtrace( h, from=sys.parent())}. [You can also replace \code{sys.parent()} with the absolute frame number of \code{f}, if \code{f} has been \code{mtrace}d and its code window is visible.] \code{mtrace} will then look through the enclosing environments of \code{from} until it finds a definition of \code{h}.
+
+If \code{myfun} has been defined in a namespaced package, then there may be several copies of \code{myfun} in the system, different ones being used at different times. \code{mtrace} will change them all; see \code{\link{fun.locator}} if you really want to know more.
+
+If \code{mtrace(bar)} is called while function \code{foo} is being debugged (\code{mtrace(foo)} having previously been called), and \code{bar} has been redefined within \code{foo} or a parent environment of \code{foo}, then only the redefined copy of \code{bar} will be \code{mtrace}d.
 }
 \examples{
 \dontrun{
