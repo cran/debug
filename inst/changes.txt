@@ -1,0 +1,5 @@
+30/1/2004: In R-1.8.1, 'object.size' gives an error on certain types of object (e.g. 'externalptr'). Code of 'print.if.small' adjusted to cope.
+
+3/2/2004: getOption( "debug.command.recall") now defaults to FALSE if 'savehistory' would give an error (as it will under ESS, for example), or TRUE otherwise; used to default to TRUE always.
+
+4/2/2004: minor changes to documentation in 'README.debug', mainly to do with ESS.

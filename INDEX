@@ -1,0 +1,6 @@
+README.debug                 How to use the debug package
+bp                           Breakpoints for debugging
+find.from                    Interactive debugging
+get.retval                   Show current return value when debugging
+go-skip-qqq                  Flow control for debugger
+mtrace                       Interactive debugging

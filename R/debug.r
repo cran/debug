@@ -33,11 +33,6 @@ function( libname, pkgname)
       stop( "debug requires mvbutils and tcltk")
 
 
-".README.debug" <-
-function() 
-  help( '.README.debug')
-
-
 ".update.debug.window" <-
 function( nlocal=sys.parent(), l) mlocal({
   l <- screen.line( lno)
@@ -1157,7 +1152,10 @@ stop( "No mtrace info for " %&% fname %&%
 
 "print.if.small" <-
 function(x, ...) {
-  if( object.size(x) < option.or.default( 'threshold.debug.autoprint.size', 8192)) {
+  osx <- try( object.size( x), silent=TRUE)
+  if( osx %is.a% 'try-error')
+    osx <- NA
+  if( !is.na( osx) && osx < option.or.default( 'threshold.debug.autoprint.size', 8192)) {
     try.to.print <- try( list( print(x, ...)))
     if( try.to.print %is.a% 'try-error')
       cat( "!! Couldn't successfully print result: ", c( try.to.print), "\n")
@@ -1170,7 +1168,7 @@ function(x, ...) {
       cat("dim: ", dim, " ")
     if(is.numeric(x))
       cat("Storage: ", storage.mode(x), " ")
-    cat("Size: ", object.size(x), "\n")
+    cat("Size: ", osx, "\n")
   }
 }
 
@@ -1184,7 +1182,7 @@ function() do.in.envir( envir=find.debug.HQ( FALSE), {
 
 "README.debug" <-
 function() 
-  help( '.README.debug')
+  help( 'README.debug')
 
 
 "screen.line" <-
@@ -1265,7 +1263,15 @@ function( nlocal=sys.parent()) mlocal({
   # recall debug and non-debug but only while in debugger,
   # merge all debug commands with command-line commands.
   # For now, only the "merge all" option is implemented
-  if( debug.command.recall <- option.or.default( 'debug.command.recall', TRUE)) {
+  history.available <- function() { 
+      df <- tempfile()
+      sh <- try( savehistory( df), silent=TRUE)
+      unlink( df)
+      sh %is.not.a% 'try-error'
+    }
+    
+  if( debug.command.recall <- option.or.default( 'debug.command.recall', 
+      history.available())) {
     debug.hist.file <- tempfile()
     savehistory( debug.hist.file)
     # Next line would only be used by "recall debug commands only while debugging"

@@ -1,12 +1,8 @@
-\name{.README.debug}
-\alias{.README.debug}
+\name{README.debug}
 \alias{README.debug}
 \title{How to use the debug package}
 \description{For how to use the \pkg{debug} package, see DETAILS.}
-\usage{
-.README.debug() # shows this documentation
-README.debug()
-}
+\usage{README.debug() # shows this documentation}
 \details{
 \code{debug} is an alternative to \code{trace} and \code{browser}, offering:
 
@@ -40,12 +36,12 @@ When in step mode, you can finish debugging and return to the normal \R command 
 
 Breakpoints, including conditional breakpoints, are set and cleared by \code{\link{bp}}. Calling \code{go(n)} puts the debugger into go mode, but also sets a temporary breakpoint at line \code{n}, which will be triggered the first time execution reaches line \code{n} but not subsequently.
 
-When the main function code has completed, the debugger moves into any \code{on.exit} code, which is also displayed and line-numbered in the code window. (Even if there are no calls to \code{on.exit}, a numbered NULL statement is placed in the exit code section, so that you can always set a "run-until-function finishes" breakpoint.) If you exit via \code{qqq()}, the exit code will not be executed first; this can lead to subsequent trouble with open connections, screwed-up \code{par} values in graphics, etc.. To make sure the exit code does get executed:
+When the main function code has completed, the debugger moves into any \code{on.exit} code, which is also displayed and line-numbered in the code window. (Even if there are no calls to \code{on.exit}, a numbered NULL statement is placed in the exit code section, so that you can always set a "run-until-function-finishes" breakpoint.) If you exit via \code{qqq()}, the exit code will not be executed first; this can lead to subsequent trouble with open connections, screwed-up \code{par} values in graphics, etc.. To make sure the exit code does get executed:
 
 \itemize{
 \item use \code{skip} to move to the start of the exit code;
-\item use \code{go(n)} to run to the final NULL in the exit code;
-\item use \code{qqq()} to finish debugging.
+\item then use \code{go(n)} to run to the final NULL in the exit code;
+\item then use \code{qqq()} to finish debugging.
 }
 
 When you want to restore \code{f} to its normal non-debugging state (and you are back at the real \R command prompt), type \code{mtrace(f,FALSE)}. To restore all debuggees, type \code{mtrace.off()} (qv). It is advisable not to \code{save} functions in an \code{mtrace}d state; to avoid manual untracing and retracing, look up \code{Save} in package \pkg{mvbutils}.
@@ -77,6 +73,13 @@ Various TCL/TK-related aspects of the code window can be altered:
 \emph{Display bugs}: There have been sporadic and unreproduceable display problems with the TCL/TK window; sometimes the window frame will appear, but with garbled contents or no contents at all. With RTERM in MS-Windows, a couple of ALT-TABs and mouse clicks to change focus are sometimes necessary. In extremis, the window will eventually sort itself out if you manually minimize, maximize, and restore it-- admittedly an irritation. Although the problem seems less frequent these days, I'm not convinced it is fully solved.
 
 If you encounter this problem, try setting \code{options(shakeup.debug.windows=TRUE)} (also in \code{.First}). The price paid for setting this option, is that window focus will switch away from \R to the new code window when the latter is first created, which is mildly irritating. On MS-Windows, I have a fix for that too, but it requires a DLL written in Delphi not C, so I can't CRAN it; let me know if you are desperate.
+
+For ESS users: I'm not an Emacs user and so haven't tried ESS with the \pkg{debug} package myself, but a read-through of the ESS documentation suggests that at least one ESS variable may need changing to get the two working optimally. Please check the ESS documentation for further details on these points (and see also \code{README.mvbutils} in the \pkg{mvbutils} package). I will update this helpfile when I have more info on what works.
+
+\itemize{
+\item The prompt will change when the debugger is running, so you may want to change "inferior-ess-prompt". Prompts will always be of the form D(XXX)> where XXX is a positive integer.
+\item Command recall probably won't work inside the debugger (or if it does, it's thanks to ESS rather than to R's own command recall mechanism). It should be disabled by default; if you do get error messages about "history not available", make sure to set \code{options( debug.command.recall=FALSE)} before debugging.
+}
 }
 \seealso{ \code{\link{mtrace}}, \code{\link{go}}, \code{\link{skip}}, \code{\link{qqq}}, \code{\link{bp}}, \code{\link{get.retval}}, \code{\link{mtrace.off}}, \code{\link{check.for.tracees}}}
 \author{Mark Bravington}
