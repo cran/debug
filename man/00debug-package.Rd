@@ -1,9 +1,9 @@
-\name{README.debug}
-\alias{README.debug}
+\name{debug-package}
+\alias{debug}
+\alias{debug-package}
+\docType{package}
 \title{How to use the debug package}
-\description{For how to use the \pkg{debug} package, see DETAILS.}
-\usage{README.debug() # shows this documentation}
-\details{
+\description{
 \code{debug} is an alternative to \code{trace} and \code{browser}, offering:
 
 \itemize{
@@ -16,7 +16,7 @@
 \item direct interpretation of typed-in statements, as if they were in the function itself.
 }
 
-Even if you don't write functions, or even if you don't write buggy functions, you may find it helpful to run the debugger on functions in \code{package:base} or other packages. Watching what actually happens while a function is executing, can be much more informative than staring at a piece of code.
+Even if you don't write functions, or even if you don't write buggy functions, you may find it helpful to run the debugger on functions in \code{package:base} or other packages. Watching what actually happens while a function is executing, can be much more informative than staring at a piece of code or terse documentation.
 
 Debugging your function \code{f} is a two-stage process. First, call \code{mtrace(f)} to store debugging information on \code{f}, and to overwrite \code{f} with a debug-ready version that will call the debugger itself. Second, do whatever you normally do at the command prompt to invoke \code{f}. This is often a direct call to'f', but can be any command that eventually results in \code{f} being invoked. [The third, fourth, etc. stages, in which you actually fix the problem, are not covered here!]
 
@@ -27,12 +27,13 @@ To progress through the code of \code{f}, you can keep pressing <ENTER>, but you
 \itemize{
 \item the function completes normally, or
 \item an error occurs in the function, or
+\item there's a user interrupt (e.g. ESCAPE is pressed), or
 \item a breakpoint is triggered.
 }
 
-In the first case, control is returned to the normal \R command prompt, just as if the debugger had not been used. In the other cases, the D(\dots)> prompt will return and the line that caused the error (or that has the breakpoint) will be highlighted in the code window. You are then back in step mode. If there was an error, you can type statement(s) that will cause the error not to happen when the highlighted line executes again, or you can move the highlighted execution point to another line number by calling \code{\link{skip}}. Execution carries on quite normally after errors, just as if the offending statement had been wrapped in a \code{try} call. If your function eventually exits normally (i.e. not via \code{qqq()}, as described next), it will be as if the error never happened (though the error message(s) will be displayed when the \R command prompt returns).
+In the first case, control is returned to the normal \R command prompt, just as if the debugger had not been used. In the other cases, the D(\dots)> prompt will return and the line that caused the error/interrupt (or that has the breakpoint) will be highlighted in the code window. You are then back in step mode. If there was an error, you can type statement(s) that will cause the error not to happen when the highlighted line executes again, or you can move the highlighted execution point to another line number by calling \code{\link{skip}}. Execution carries on quite normally after errors, just as if the offending statement had been wrapped in a \code{try} call. If your function eventually exits normally (i.e. not via \code{qqq()}, as described next), it will be as if the error never happened (though the error message(s) will be displayed when the \R command prompt returns).
 
-When in step mode, you can finish debugging and return to the normal \R command prompt by typing \code{qqq()}. <ESC> also seems to work, but \code{qqq()} is probably safer. If you type <ESC> while in go mode, you will usually be returned to step mode, but sometimes to the \R command prompt, and sometimes there will be no effect (e.g. if C code is running).
+When in step mode, you can finish debugging and return to the normal \R command prompt by typing \code{qqq()}. <ESC> also seems to work, but \code{qqq()} is probably safer. If you type <ESC> while in go mode, you will usually be returned to step mode, but sometimes to the \R command prompt (e.g. if you happen to press it while \code{debug} is executing its own code rather than yours-- this is on the to-do list), and sometimes there will be no immediate effect (e.g. if C code is running).
 
 Breakpoints, including conditional breakpoints, are set and cleared by \code{\link{bp}}. Calling \code{go(n)} puts the debugger into go mode, but also sets a temporary breakpoint at line \code{n}, which will be triggered the first time execution reaches line \code{n} but not subsequently.
 
@@ -44,13 +45,13 @@ When the main function code has completed, the debugger moves into any \code{on.
 \item then use \code{qqq()} to finish debugging.
 }
 
-When you want to restore \code{f} to its normal non-debugging state (and you are back at the real \R command prompt), type \code{mtrace(f,FALSE)}. To restore all debuggees, type \code{mtrace.off()} (qv). It is advisable not to \code{save} functions in an \code{mtrace}d state; to avoid manual untracing and retracing, look up \code{Save} in package \pkg{mvbutils}.
+When you want to restore \code{f} to its normal non-debugging state (and you are back at the real \R command prompt), type \code{mtrace(f,FALSE)}. To restore all debuggees, type \code{\link{mtrace.off}()}. It is advisable not to \code{save} functions in an \code{mtrace}d state; to avoid manual untracing and retracing, look up \code{Save} in package \pkg{mvbutils}.
 
 You can debug several functions "at once" (e.g. if \code{f} calls \code{g}, you can \code{mtrace} both \code{f} and \code{g}, with \code{mtrace(g)} called either inside or outside the debugger), causing several code windows to be open simultaneously. If \code{f} is called again inside \code{f} (either via some statement in \code{f}, or from something you type in step mode), another \code{f} code window will open. The number in the window title is the frame number, and the currently-active frame number is shown in the D(\dots)> prompt.
 
 For statements typed in at the D(\dots)> prompt, only the first syntactically-complete \R expression will be executed; thus, typing \code{a <- 1; a <- 2} will set \code{a} to 1, but typing \code{\{ a <- 1; a <- 2\}} will set \code{a} to 2.
 
-S3 methods work fine with \code{mtrace}, but S4 methods don't (probably fixable, but low priority; I have no plans to use them, and hope not to have to debug other people's!).
+S3 methods work fine with \code{mtrace}, but S4 methods don't unless you do something special. My suspicion is that they will work OK if you can somehow pass the true name of the method to \code{mtrace}, along with its environment using the \code{from} argument. This is probably fixable, but low priority (unless I get lots of requests); I have no plans to write S4 methods, and hope not to have to debug other people's!
 
 For further information, see R-news 3/3.
 }
@@ -67,6 +68,7 @@ Various TCL/TK-related aspects of the code window can be altered:
 \item \code{debug.height} (in lines) defaults to 10
 \item \code{debug.width} (in characters) defaults to 120
 \item \code{debug.screen.pos} defaults to "+5-5" for BL corner; try "-5-5" for BR, "-5+5" for TR, "+5+5" for TL.
+\item \code{debug.fg} is foreground text colour, defaulting to \code{black}
 }
 }
 \note{

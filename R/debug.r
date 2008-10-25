@@ -27,10 +27,37 @@ function( libname, pkgname)
       stop( "debug requires mvbutils and tcltk")
 
 
+".onAttach" <-
+function( libname, pkgname){
+  f <- function( val) blah-blah-blah
+  for( x in cq( tracees)) {
+    body( f) <- substitute( if( missing( val)) x else x <<- val, list( x=as.name( x)))
+    environment( f) <- asNamespace( 'debug')
+    makeActiveBinding( x, f, as.environment( 'package:debug'))
+  }    
+}
+
+
 ".onLoad" <-
-function( libname, pkgname)
-  ( require( mvbutils, save=FALSE) && require( tcltk, save=FALSE) ) || 
-      stop( "debug requires mvbutils and tcltk")
+function( libname, pkgname) {
+  set.presave.hook.mvb( untracer.env)
+  evalq({ tracees <- list()}, asNamespace( pkgname)) #environment( sys.function()))
+  dont.lockBindings( 'tracees', pkgname)
+  
+  try2 <- try
+  environment( try2) <- asNamespace( pkgname)
+  if( !identical( body( try)[[2]][[1]], quote( tryCatch)))
+    warning( "Can't catch ESC interrupts-- 'try' format has changed-- please notify MVB")
+  else {
+    interrupt.fun <- function( e) { 
+        cat( '<Interrupted!>\n', file=find.debug.HQ()$debug.catfile()) 
+        invisible( structure( 'Interrupt', class='try-error'))}
+    body( try2)[[2]]$interrupt <- interrupt.fun
+  }
+  assign( 'try2', try2, envir=asNamespace( pkgname))
+ 
+  # copy.ns.objects( 'tracees', pkgname)
+}
 
 
 ".update.debug.window" <-
@@ -371,16 +398,25 @@ function( where=1) {
   if( !length( o))
 return( character( 0))
 
+  where <- as.environment( where)
   is.tracee <- function( x) {
-    x <- get( x, pos=where)
-    if( !my.index.exists( c( 2,2,1), body( x)))
+    x <- get( x, envir=where)
+    idx <- c(2,2,1)
+    repeat{
+      if( !my.index.exists( idx, body( x)))
   return( FALSE)
-   
-    bod <- my.index( body( x), 2, 2, 1)
-    identical( as.name( 'evaluator'), bod) ||
-    ( identical( as.name( 'mlocal'), bod) && identical( as.name( 'evaluator'), my.index( body( x), 2,2,2,1)))
-  }  
-  
+
+      # Can run into terrible grief if this is "missing" (0-length name)-- won't assign
+      if( is.name( bod <- my.index( body(x), idx)) && !nzchar( as.character( my.index( body(x), idx))))
+  return( FALSE)
+
+      if( identical( quote( mlocal), bod) && length( idx)==3)
+        idx <- c( 2, 2, 2, 1) # try another
+      else
+  return( identical( quote( debug:::evaluator), bod))
+    }
+  }
+
   o[ sapply( o, is.tracee)]
 }
 
@@ -592,7 +628,7 @@ function( command, frame) do.in.envir( envir=find.debug.HQ( FALSE), {
 return() }
 
   .skip. <<- FALSE
-  command <- try( list( parse( text=command)))
+  command <- try( list( parse( text=command, srcfile=NULL)))
   if( command %is.not.a% 'try-error') {
     command <- command[[1]] # unwrap list in try
     if( length( command)) {
@@ -601,10 +637,10 @@ return() }
       command <- debug.mvb.subst( command)
     #  print( command)
     #  cat( 'Mode=', mode( command), '\n')
-      command <- try( list( eval( command, envir=frame)))
+      command <- try2( list( eval( command, envir=frame)))
 
       if( command %is.not.a% 'try-error') 
-        printIfSmall( command[[1]]) # unwrap list from 'try'
+        printIfSmall( command[[1]], ofile=debug.catfile()) # unwrap list from 'try'
        else
         .evaluated.OK. <<- FALSE # paranoid safety net; eOK _might_ have been set to TRUE before a crash!
     } else # length-0, presumably from line starting with a hash
@@ -621,18 +657,20 @@ function() get( 'orig.breakpoint.length', envir=sys.frame( find.active.control.f
 
 "eval.bp" <-
 function(ex, envir) {
-  try( {
-    break.time <- eval( ex, envir=envir)
-    if( length( break.time) != 1)
-      break.time <- TRUE
-    else
-      break.time <- as.logical( break.time) })
+  break.time <- try2( eval( ex, envir=envir))
   if( break.time %is.a% 'try.error') {
     cat( '\nInvalid breakpoint expression!\n')
     break.time <- TRUE }
-  else if( is.na( break.time)) {
+
+  if( length( break.time) != 1)
+    break.time <- TRUE
+  else
+    break.time <- as.logical( break.time)
+    
+  if( is.na( break.time)) {
     cat( '\nBreakpoint evaluates to NA!\n')
-    break.time <- TRUE }
+    break.time <- TRUE
+  }
 
   break.time
 }
@@ -641,7 +679,7 @@ function(ex, envir) {
 "eval.catching.errors" <-
 function(i, envir) do.in.envir( envir=find.debug.HQ( FALSE), {
   # Thanks to Luke Tierney for this trick, which avoids "restart"
-  j <- try( list( value=eval( i, envir=envir))) 
+  j <- try2( list( value=eval( i, envir=envir))) # try2 traps interrupts as well as errors
   .evaluated.OK. <<- j %is.not.a% 'try-error'
   if( .evaluated.OK.) {
     j <- j$value
@@ -669,12 +707,12 @@ break # and then return
       in.body.code <- FALSE
 
     ch.i <- ch( i)
-    .skip. <<- FALSE
+    .skip. <<- FALSE 
     .skipto. <- 0
-
+    
     repeat { # Figure out if user input is possible, and if so keep processing commands until told to continue debugger
       if( .quit.debug.) { # set by user's call to q(), mapped to 'q.debug'; this may be inside child
-        cat( '\rNo ')
+        cat( '\rNo ', file=debug.catfile())
 stop( 'merely quitting mvb\'s debugger') }
 
       .evaluated.OK. <<- TRUE
@@ -682,7 +720,7 @@ stop( 'merely quitting mvb\'s debugger') }
       find.line <- match( ch.i, names( breakpoints))
       if( !is.na( find.line))
         lno <- find.line
-
+      
       if( !stop.here() || !.step.)
     break
 
@@ -711,12 +749,12 @@ stop( 'merely quitting mvb\'s debugger') }
         if( .evaluated.OK.) {
           j <- try.j
           if( missing( j))
-            j <- delay( formals( evaluator)$fname)
+            j <- delay( formals( evaluator)$fname) # FIX !!
           if(.print.result.)
-            printIfSmall(j)
+            printIfSmall(j, ofile=debug.catfile())
           .evaluated.OK. <<- check.legality( j, call.type) # illegal arg to if/while/for/switch
           if( !.evaluated.OK.)
-            cat( 'Problem:', attr( .evaluated.OK., 'message'), '\n')
+            cat( 'Problem:', attr( .evaluated.OK., 'message'), '\n', file=debug.catfile())
         }
 
         if( !.evaluated.OK.) { # back to outer loop and user's commands
@@ -764,12 +802,26 @@ function( create.if.not=TRUE ) {
   if( length( n.debug.HQ))
     debug.HQ <- sys.frame( n.debug.HQ[ 1])
   else if( create.if.not) {
+#    cat( 'Setting up debug HQ: frame=', sys.nframe(), '\nparent=', sys.parent(), 
+#        '\nparent.frame=')
+#    print( sys.frame( sys.parent()))
+#    cat( '\nparent.frame contents=')
+#    print( ls( sys.frame( sys.parent())))
+    
     debug.HQ <- parent.frame()
     attr( debug.HQ, 'I.am.the.debug.HQ') <- TRUE
     n.debug.HQ <- sys.parent()
-    setup.debug.admin( nlocal=n.debug.HQ) }
-  else # doesn't exist, not supposed to create it
+    setup.debug.admin( nlocal=n.debug.HQ) 
+  } else # doesn't exist, not supposed to create it
 return( FALSE)
+
+  # Create an "active copy" of 'tracees' in debug.HQ
+  
+  if( exists( 'tracees', envir=debug.HQ)) 
+    rm( tracees, envir=debug.HQ)
+  f <- function( val) if( missing( val)) tracees else tracees <<- val
+  environment( f) <- asNamespace( 'debug')
+  makeActiveBinding( 'tracees', f, debug.HQ)
 
   debug.HQ
 }
@@ -887,19 +939,61 @@ function( nlocal=sys.parent(), input) mlocal({
 #  if( exists( 'r.window.handle', 'mvb.session.info'))
 #    push.to.foreground( r.window.handle)
 
-  cat( '\nD(' %&% frame.number %&% ')> ')
-  input <- readLines( n=1)
-  if( nchar( input) && debug.command.recall) {
-    cat( input, '\n', sep='', append=TRUE, file=debug.hist.file)
-    loadhistory( debug.hist.file)
-  }
+  cat( '\nD(' %&% frame.number %&% ')> ', file=debug.catfile())
+  input <- try( readLines( n=1, ok=FALSE))
+  if( (!missing( input)) && (input %is.not.a% 'try-error')) {
+    if( nzchar( input) && debug.command.recall) {
+      cat( input, '\n', sep='', append=TRUE, file=debug.hist.file)
+      loadhistory( debug.hist.file) 
+    } # if input was adequate
+  } else
+    input <- 'stop( "Bad input!")' # ctrl-Z in windows, for example
+  
   input
 })
+
+
+"is.mtraced" <-
+function( f){
+  if( is.null( f))
+return( FALSE) # mtrace( <<function.that.is.out.of.scope>>, FALSE)
+
+  if( is.function( f))
+    f <- list( f)
+  else if( is.character( f)) {
+    nope <- !sapply( f, exists, where=1)
+    flist <- vector( 'list', length( f))
+    flist[ !nope] <- lapply( f[!nope], get, pos=1)
+    f <- flist
+  }
+
+  if( !is.list( f)){
+    print( f)
+stop()}
+stopifnot( is.list( f))
+
+  nope <- sapply( f, function( x) length( body( x))<4)
+  if( !all( nope)) {
+    bf2 <- sapply( f[ !nope], function( x) paste( deparse( body( x)[[2]]), collapse=' '))
+
+    xret <- '^ *return\\( *'
+    xeval <- '(debug:::)?evaluator\\('
+    nomatch <- rep( TRUE, length( bf2))
+    for( midbodi in c( '', 'mlocal\\( *', 'do.in.envir\\( *envir *=.*, *fbody *= *'))
+      nomatch <- nomatch & regexpr( xret %&% midbodi %&% xeval, bf2) < 0
+
+    nope[ !nope][ nomatch] <- TRUE
+  }
+
+  !nope
+}
 
 
 "launch.debug.windows" <-
 function() do.in.envir( envir=find.debug.HQ( FALSE), {
   top <- tktoplevel( )
+  if( !is.null( debug.first.window.hook <- getOption( 'debug.first.window.hook')))
+    debug.first.window.hook()
   for( i.win in index( !.frames.$has.window.yet)) { # i.e. not launched yet
 #  cat( 'Launching', .frames.$window.name[ i.win], '\n')
     debug.env <- sys.frame( .frames.$debug[ i.win])
@@ -923,10 +1017,10 @@ function() do.in.envir( envir=find.debug.HQ( FALSE), {
   #  tkpack( go.button, goto.button, side='left', expand=TRUE)
 
     # First create the objects, then link them with 'tkconfigure'
-    listio <- tklistbox( top, font=font, bg='white', height=height, width=width, 
-      setgrid=TRUE, borderwidth=0)
+    listio <- tklistbox( top, font=font, bg='white', fg=option.or.default( 'debug.fg', 'black'),
+        height=height, width=width, setgrid=TRUE, borderwidth=0)
     show.bp <- tklistbox( top, font=font, fg='white', bg='white', selectforeground='blue', 
-      height=height, setgrid=TRUE, width=1, borderwidth=0, takefocus=FALSE)
+        height=height, setgrid=TRUE, width=1, borderwidth=0, takefocus=FALSE)
     yscrollio <- tkscrollbar( top)
     xscrollio <- tkscrollbar( top, orient='horizontal')
 
@@ -955,7 +1049,7 @@ function() do.in.envir( envir=find.debug.HQ( FALSE), {
     tkpack( yscrollio, side='right', fill='y')
     tkpack( show.bp, listio, side='left', fill='both', expand=TRUE, ipadx=0)
     
-lapply( screen.pos, function( x) tkwm.geometry( top, x)) # to allow several calls
+    lapply( screen.pos, function( x) tkwm.geometry( top, x)) # to allow several calls
     
     tkfocus( listio)
     tkselection.set( listio, 0)
@@ -1016,9 +1110,10 @@ function( namespace.dest=NULL) {
       # Copy unexported functions into debug.HQ
       debug.namespace <- asNamespace( 'debug')
       funs <- lsall( env=debug.namespace) %except% find.funs( 'package:debug')
-      funs <- funs[ sapply( funs, exists, env=debug.namespace, mode='function')]
+      funs <- funs %except% lsall( env=namespace.dest)
       for( ifun in funs)
-        assign( ifun, getFromNamespace( ifun, debug.namespace), namespace.dest)
+        assign( x=ifun, value=debug.namespace[[ ifun]], envir=namespace.dest)
+        #getFromNamespace( ifun, debug.namespace), envir=namespace.dest)
     }
   }
   
@@ -1052,18 +1147,18 @@ function( sorted.out=TRUE, nlocal=sys.parent(), original.i, tryout) mlocal({
         jj <- floor( as.double( j)) # avoid complex floor
       else { # character match
         jj <- match( j, names( expr[[ i]]), NA)-2
-        # If no match, move to "otherwise" if there is one; else leave it as NA 
+        # If no match, move to "otherwise" if there is one; else leave it as NA
         # Note that displayed value might be misleading
-        if( is.na( jj) && names( expr[[ i]])[ swlen] == '') 
+        if( is.na( jj) && names( expr[[ i]])[ swlen] == '')
           jj <- swlen-2
       }
-      
+
       if( is.na( jj) || jj<1 || jj>swlen-2) {
         j <- NULL
         sorted.out <- FALSE } # move to expr after switch
       else { # find first non-null expression at or after matched position
         jj <- jj+2
-        while( jj<swlen && is.name( expr[[ i, jj]]) && 
+        while( jj<swlen && is.name( expr[[ i, jj]]) &&
             !nchar( as.character( expr[[ i, jj]])) )
           jj <- jj+1
         i <- c( i, jj)
@@ -1101,8 +1196,9 @@ return( local.return())
         val <- for.counters[[ ch.ip]][[ 1]]
         assign( as.character( expr[[ i.parent, 2]]), val, envir=frame)
         if( .step.) {
-          cat( '\nFor-loop counter: ', expr[[ i.parent, 2 ]], 'Value:\n')
-          printIfSmall( val)
+          cat( '\nFor-loop counter: ', expr[[ i.parent, 2 ]], '\nValue:\n',
+              file=debug.catfile())
+          printIfSmall( val, ofile=debug.catfile())
         }
         for.counters[[ ch.ip]] <- for.counters[[ ch.ip]][ -1 ] }
       else # if loop counter exhausted
@@ -1110,8 +1206,10 @@ return( local.return())
     else if( parent.call.type == '<-') {
       # This has to be a bit weird to prevent the call to '<-' from over-evaluating
       callo <- call( '<-', expr[[ i.parent, 2]], call( 'quote', j))
-      tryout <- try( eval( callo, envir=frame)) # try is new in 1.1
-      .evaluated.OK. <<- missing( tryout) || (tryout %is.not.a% 'try-error')
+      tryout <- try2( list( eval( callo, envir=frame))) # list wrap new in 10/2008
+      .evaluated.OK. <<- (tryout %is.not.a% 'try-error') 
+      # was: .evaluated.OK. <<- missing( tryout) || (tryout %is.not.a% 'try-error')
+      # not sure what the missing test was for, or how to re-write
       if( !.evaluated.OK.) {
         i <- original.i # back out
 return( local.return())
@@ -1129,12 +1227,13 @@ return( local.return())
 
 
 "mtrace" <-
-function( fname, tracing=TRUE, char.fname=as.character( substitute( fname)), from=mvb.sys.parent(), update.tracees=TRUE) {
+function( fname=NULL, tracing=TRUE, char.fname=as.character( substitute( fname)),
+    from=mvb.sys.parent(), update.tracees=TRUE, return.envs=FALSE) {
 # do.in.envir call REMOVED... gulp
 # mtrace is "do.in.envir" (of its caller) so it can be called WHILE debugging another function
   assign( '[[', my.index)
   fname <- char.fname
-  
+
   ff <- fun.locator( fname, from)
   if( !tracing && !length( ff)) # couldn't find
     f <- NULL # not completely useless; zap entry in 'tracees'
@@ -1147,101 +1246,68 @@ stop( "Can't find " %&% fname)
   }
 
   if( tracing) {
-    # Re-trace?
-    if( length( body( f))>=2 && body( f)[[1]]=='{' && is.recursive( body(f)[[2]]) && body(f)[[2,1]]=='return' && length( body( f)[[2]])>1 &&
-      ( (normal.scope <- body( f)[[2,2,1]]=='evaluator') || 
-        (mlocal.scope <- (body( f)[[2,2,1]]=='mlocal' && body(f)[[2,2,2,1]]=='evaluator')) ||
-        (do.in.envir.scope <- (body( f)[[2,2,1]]=='do.in.envir' && is.recursive( body( f)[[2,2]]$fbody) && 
-            body(f)[[2,2]]$fbody[[1]]=='evaluator')) )) {
-      cat( 'Re-applying trace...\n') # next character is } to keep matcher happy!
-      formals( f) <- formals( body( f)[[3]])
-      if( normal.scope)
-        body( f) <- body( f)[[4]]
-      else if( mlocal.scope)
-        body( f) <- substitute( mlocal( x), list( x=body( f)[[4]]))
-      else { # if( do.in.envir.scope)
-        if( any( names( body( f)[[2,2]])=='envir'))
-          body( f) <- substitute( do.in.envir( envir=this.envir, x), list( this.envir=body( f)[[2,2]]$envir, x=body(f)[[4]]))
-        else
-          body( f) <- substitute( do.in.envir( x), list( x=body( f)[[4]]))
-      }
+    if( is.mtraced( f)) {
+      cat( 'Re-applying trace...\n')
+      f <- unmtrace( f)
     }
 
     preamble <- character(0)
-    # mlocal or normal?
+    orig.body <- body( f)
+    # normal, mlocal, or do.in.envir?
     if( is.recursive( body( f)) && body( f)[[1]]=='mlocal') {
-      cc <- substitute( return( mlocal( evaluator( fname=this.fun.name))), list( this.fun.name=fname))
+      cc <- substitute(
+          return( mlocal( debug:::evaluator( fname=this.fun.name))),
+          list( this.fun.name=fname))
       preamble <- 'mlocal(' #)
       body( f) <- body( f)[[2]] }
     else if( is.recursive( body( f)) && body( f)[[1]]=='do.in.envir') {
       mc <- match.call( definition=do.in.envir, call=body( f))
       if( any( names( mc) == 'envir'))
-        cc <- substitute( return( do.in.envir( envir=this.envir, fbody=evaluator( fname=this.fun.name))),
+        cc <- substitute(
+            return( do.in.envir( envir=this.envir, fbody=debug:::evaluator( fname=this.fun.name))),
             list( this.fun.name=fname, this.envir=mc$envir))
       else
-        cc <- substitute( return( do.in.envir( fbody=evaluator( fname=this.fun.name))),
+        cc <- substitute(
+            return( do.in.envir( fbody=debug:::evaluator( fname=this.fun.name))),
             list( this.fun.name=fname))
       body( f) <- mc$fbody
       preamble <- 'do.in.envir( envir=' %&% paste( deparse( mc$envir), collapse=' ') %&% ',' } # )
-    else
-      cc <- substitute( return( evaluator( fname=this.fun.name)), list( this.fun.name=fname) )
+    else # normal
+      cc <- substitute(
+          return( debug:::evaluator( fname=this.fun.name)), list( this.fun.name=fname) )
 
     this.tracee <- add.numbers( f, preamble=preamble)
     orig.args <- args( f)
-    body( f) <- call( '{', cc, args( f), body( f) ) # } to keep matcher happy
-    
+    body( f) <- call( '{', cc, orig.args, orig.body ) # } to keep matcher happy
+
     # Now substitute delicate stuff in formal args:
     list.of.command.subs <- make.locs( NULL)
-    for( arg.name in names( formals( f))) { 
+    for( arg.name in names( formals( f))) {
       this.arg <- formals( f)[[ arg.name]]
       if( !missing( this.arg) && ((mode( this.arg) != 'name') || nchar( as.character( this.arg)))) {
         this.arg <- do.call( 'substitute', list( this.arg, list.of.command.subs)) # next etc.
-        # Next line has 'list' wrapper so NULL doesn't delete 
+        # Next line has 'list' wrapper so NULL doesn't delete
         formals( f)[ arg.name] <- list( debug.mvb.subst( this.arg)) # sys.nframe etc.
       }
     }
 
-    if( !exists.mvb( 'tracees', pos='mvb.session.info'))
-      tracees <- list()
-    else
-      tracees <- get( 'tracees', pos='mvb.session.info')
-    tracees <- tracees[ names( tracees) != fname]
-    tracees <- c( tracees, structure( .Data=list(this.tracee), names=fname))
-  } else {
-    # UNTRACE:  
-    # update.tracees should be TRUE unless this is called from Save
-    if( update.tracees && exists.mvb( 'tracees', pos='mvb.session.info')) 
-      tracees <- get( 'tracees', pos='mvb.session.info') %without.name% fname
-    else
-      tracees <- list()
-      
-    if( is.recursive( body( f)) && body( f)[[1]]=='{' && length( body( f))>=2 && is.recursive( body( f)[[2]]) && 
-        body(f)[[2,1]]=='return' && length( body( f)[[2]])>1) {
-      formals( f) <- formals( body( f)[[3]]) # extract old args
-      if( body( f)[[2,2,1]]=='evaluator')
-        body( f) <- list( body( f)[[4]]) # call to list seems harmless, and avoids problems with function() 9
-      else if( body( f)[[2,2,1]]=='mlocal' && body(f)[[2,2,2,1]]=='evaluator')
-        body( f) <- substitute( mlocal( x), list( x=body( f)[[4]])) 
-      else if( body( f)[[2,2,1]]=='do.in.envir' && is.recursive( body( f)[[2,2]]$fbody) && 
-            body(f)[[2,2]]$fbody[[1]]=='evaluator')  {
-        if( any( names( body( f)[[2,2]])=='envir'))
-          body( f) <- substitute( do.in.envir( envir=this.envir, x), list( this.envir=body( f)[[2,2]]$envir, x=body(f)[[4]]))
-        else
-          body( f) <- substitute( do.in.envir( x), list( x=body( f)[[4]]))
-      }
-    } else # apparently wasn't traced so...
-      f <- NULL # ...don't bother saving f
+    tracees <<- tracees %without.name% fname
+    tracees <<- c( tracees, structure( .Data=list(this.tracee), names=fname))
+  } else { # untracing
+    if( is.mtraced( f))
+      f <- unmtrace( f)
+    tracees <<- tracees %without.name% fname
   }
 
   if( !is.null( f)) { # IE we need to save f
     environment( f) <- old.env
     attributes( f) <- old.attr
-    
+
     # Now check whether the version being saved is in the temporary frame stack
     if( any( sapply( sys.frames(), identical, y=ff[[1]])))
       ff <- ff[ 1] # don't change any deeper copies or permanent copies
-      
-    for( this.ff in ff) { 
+
+    for( this.ff in ff) {
       locko <- bindingIsLocked( fname, this.ff)
       if( locko)
         unlockBinding( fname, this.ff)
@@ -1254,19 +1320,18 @@ stop( "Can't find " %&% fname)
       }
     }
   }
-  
-  if( update.tracees)
-    put.in.session( tracees)
-  invisible( f)
+
+  if( return.envs)
+return( ff)
+  else
+return( invisible( f))
 }
 
 
 "mtrace.off" <-
 function() {
-  unmtrace <- function( m) mtrace( char.fname=m, tracing=F)
-  if( exists( 'tracees') && length( names( tracees)))
-    sapply( names( tracees), unmtrace)
-  sapply( check.for.tracees(), unmtrace) # any hangovers from save.image etc.
+  mtrace.off.quietly <- function( fname) try( mtrace( char.fname=fname, tracing=FALSE), silent=TRUE)
+  sapply( names( tracees), mtrace.off.quietly)
   invisible( NULL)
 }
 
@@ -1278,7 +1343,7 @@ function() sys.parent()
 "next.incarnation" <-
 function( nlocal=sys.parent()) mlocal({
 # Set up debug admin. Already environmentalized so it'll find .frames. etc.
-  trf <- try( get( 'tracees', 'mvb.session.info', inherits=FALSE))
+  trf <- try( get( 'tracees', 'package:debug', inherits=FALSE))
   if( (trf %is.a% 'try-error') || !( fname %in% names( trf)))
 stop( "No mtrace info for " %&% fname %&% 
     "; maybe saved before being un-mtraced?")
@@ -1320,24 +1385,24 @@ stop( "No mtrace info for " %&% fname %&%
 
 
 "printIfSmall" <-
-function(x, ...) {
+function(x, ..., ofile=stdout()) {
   osx <- try( object.size( x), silent=TRUE)
   if( osx %is.a% 'try-error')
     osx <- NA
   if( !is.na( osx) && osx < option.or.default( 'threshold.debug.autoprint.size', 8192)) {
-    try.to.print <- try( list( print(x, ...)))
+    try.to.print <- try( list( capture.output( print(x, ...), file=ofile)))
     if( try.to.print %is.a% 'try-error')
-      cat( "!! Couldn't successfully print result: ", c( try.to.print), "\n")
+      cat( "!! Couldn't successfully print result: ", c( try.to.print), "\n", file=ofile)
   } else {
     if(!is.null(class <- attr(x, "class")))
-      cat("Class: ", class, " ")
-    cat("Mode: ", mode(x), " ")
-    cat("Length: ", length <- length(x), " ")
+      cat("Class: ", class, " ", file=ofile)
+    cat("Mode: ", mode(x), " ", file=ofile)
+    cat("Length: ", length <- length(x), " ", file=ofile)
     if(!is.null(dim <- dim(x)))
-      cat("dim: ", dim, " ")
+      cat("dim: ", dim, " ", file=ofile)
     if(is.numeric(x))
-      cat("Storage: ", storage.mode(x), " ")
-    cat("Size: ", osx, "\n")
+      cat("Storage: ", storage.mode(x), " ", file=ofile)
+    cat("Size: ", osx, "\n", file=ofile)
   }
 }
 
@@ -1347,11 +1412,6 @@ function() do.in.envir( envir=find.debug.HQ( FALSE), {
   .quit.debug. <<- TRUE
   .nothing.
 })
-
-
-"README.debug" <-
-function() 
-  help( 'README.debug')
 
 
 "screen.line" <-
@@ -1384,14 +1444,14 @@ function( ...) {
 function( nlocal=sys.parent()) mlocal({
 # "sys.parent()" is almost certainly NOT the appropriate value for 'nlocal'!
 # Intended to be called only by 'find.debug.HQ'
-
   assign( '[[', my.index)
   assign( '[[<-', my.index.assign)
   .frames. <- empty.data.frame( actual=, debug=0, function.name=, window.name=, subframe='', has.window.yet=FALSE)
   .nothing. <- structure( 0, class='nullprint') # invisible object
   .step. <- .skip. <- .evaluated.OK. <- .system. <- .print.result. <- .in.users.commands. <- .quit.debug. <- FALSE
   .end.debug. <- NULL
-
+  debug.catfile <- if( option.or.default( 'debug.catfile', 'stderr')=='stderr') stderr else stdout
+  
   # TCL/TK stuff
   back.colour <- c( ' '='White', '*'='Red')
   select.colour <- c( ' '='Blue', '*'='Red')
@@ -1405,8 +1465,18 @@ function( nlocal=sys.parent()) mlocal({
       special, builtin, '...', any, expression, list, externalptr)
   valid.switch.types <- cq( character, logical, integer, double, complex)
 
+  # cat( 'Before make.locs:\n')
+  # print( sys.frames())
+  # print( ls( sys.frame(sys.nframe())))
+  # print( sys.frame( sys.nframe()))  
+
   # Command subs
   list.of.command.subs <- make.locs( namespace.dest=sys.frame( mvb.sys.nframe()))
+  
+  # cat( 'After make.locs:\n')
+  # print( ls( sys.frame(sys.nframe())))
+  # print( sys.frames())
+  # print( sys.frame( sys.nframe()))  
 
   # Command recall
   # Could implement several options-- recall debug commands only while in debugger,
@@ -1443,9 +1513,20 @@ function( nlocal=sys.parent()) mlocal({
     else
       rogue.types[ i]
   }
-
+  
+  # MUST FIX "DELAY" BELOW-- BROKEN !!
   # Next line to get around deprecation in R2.1, aaargh.
   delay <- function (x, env = .GlobalEnv) .Internal(delay(substitute(x), env))
+
+#  try2 <- try
+#  if( !identical( body( try)[[2]][[1]], quote( tryCatch)))
+#    warning( "Can't catch ESC interrupts-- 'try' format has changed-- please notify MVB")
+#  else {
+#    interrupt.fun <- function( e) { 
+#        cat( '<Interrupted!>\n', file=debug.catfile()) 
+#        invisible( structure( 'Interrupt', class='try-error'))}
+#    body( try2)[[2]]$interrupt <- interrupt.fun
+#  }
 
 #       DON'T Make a copy of "tracees". This is really so that any on-the-fly traces aren't preserved
 #        tracees_ get( 'tracees', pos='mvb.session.info')
@@ -1527,4 +1608,65 @@ function( nlocal=sys.parent()) mlocal({
 
   any(which.bp)
 })
+
+
+"unmtrace" <-
+function( f) {
+  env.f <- environment( f)
+  attr.f <- attributes( f)
+  formals( f) <- formals( body( f)[[3]])
+  body( f) <- list( body( f)[[4]]) # destroys attr & env
+  attributes( f) <- attr.f
+  environment( f) <- env.f
+  f
+}
+
+
+"untracer" <-
+function( env){
+  undo <- names( tracees) %that.are.in% lsall( env)
+  undo <- undo[ sapply( undo, function( x) is.mtraced( env[[x]]))]
+  orig <- lapply( named( undo), get, envir=env)
+  for( i in names( orig)) {
+    f <- env[[ i]]
+    env.f <- environment( f)
+    attr.f <- attributes( f)
+    formals( f) <- formals( body( f)[[3]])
+    body( f) <- list( body( f)[[4]]) # destroys attr & env
+    attributes( f) <- attr.f
+    environment( f) <- env.f
+    env[[ i]] <- f
+  }
+  
+  orig
+}
+
+
+"untracer.env" <-
+function( env){
+  undo <- names( tracees) %that.are.in% lsall( env)
+  undo <- undo[ sapply( undo, function( x) is.mtraced( env[[x]]))]
+  orig <- lapply( named( undo), get, envir=env)
+  for( i in names( orig)) 
+    env[[ i]] <- unmtrace( env[[ i]])
+  
+  orig
+}
+
+
+`original!object!list` <-
+c(".end.incarnation", ".First.lib", ".onAttach", ".onLoad", ".update.debug.window", 
+".update.window.with.on.exit", "add.numbers", "addnum.move.to.next.expr", 
+"backtrack.to.loop", "bp", "check.for.tracees", "check.legality", 
+"debug.break", "debug.do.call", "debug.local.on.exit", "debug.mvb.subst", 
+"debug.next", "debug.on.exit", "debug.q", "debug.return", "debug.retval", 
+"debug.sys.on.exit", "dismiss.debug.window", "enact.command.r", 
+"enter.on.exit", "eval.bp", "eval.catching.errors", "evaluator", 
+"exit.on.exit", "find.active.control.frame", "find.debug.HQ", 
+"find.from", "fun.locator", "get.retval", "go", "interact", "is.mtraced", 
+"launch.debug.windows", "make.locs", "move.to.next.expression", 
+"mtrace", "mtrace.off", "my.simple.func", "next.incarnation", 
+"printIfSmall", "qqq", "screen.line", "set.a.breakpoint", "set.global.debug.vars", 
+"setup.debug.admin", "skip", "skipto.debug", "stop.here", "unmtrace", 
+"untracer", "untracer.env")
 
