@@ -4,10 +4,12 @@ export( "bp",
 "get.retval",
 "go",
 "is.mtraced",
+"last.try.error",
 "mtrace",
 "mtrace.off",
 "qqq",
-"skip"
+"skip",
+"step.into.sysfuns"
 )
 import( mvbutils)
 import( tcltk)

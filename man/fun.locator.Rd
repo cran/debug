@@ -1,13 +1,14 @@
 \name{fun.locator}
 \alias{fun.locator}
 \title{Get environment(s) where an object exists}
-\description{Checks the frame stack, the search list, any namespaces, and any S3 method tables for copies of an object (normally a function, but this isn't checked or required). Used by \code{\link{mtrace}}.}
+\description{Checks the frame stack, the search list, any namespaces, and any S3 method tables for copies of an object (normally a function). Used by \code{\link{mtrace}}.}
 \usage{
-fun.locator( fname, from=.GlobalEnv)
+fun.locator( fname, from=.GlobalEnv, mode='function')
 }
 \arguments{
 \item{ fname}{character string (the object's name)}
 \item{ from}{Where to start looking:either an environment, another function (in which case, that function's defining environment is used), or a frame number. 0 is treated as \code{.GlobalEnv}}
+\item{ mode}{What type of object to look for-- by default, a function. Set to \code{any} if the object's mode is not relevant.}
 }
 \value{A list of environments where \code{fname} was found, of length 0 if no copies were found. First, any environments between \code{from} and \code{topenv( from)} are searched (normally, this means temporary frames wherein \code{fname} could have been defined; but see \bold{Details}). Next, the search list is checked. Next, all loaded namespaces are checked. Finally, all S3 method tables are checked.}
 \details{

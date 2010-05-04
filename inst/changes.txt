@@ -19,3 +19,14 @@
 20/10/2008: added ESCAPE handling-- drops you back to the debugger prompt, rather than straight back to the terminal. (Unless the interrupt happens while you're in debug's own code-- need some muffleWarnings stuff.)
 
 28/10/2009: for-loop over factors now coerces to character; bug in replacement 'parent.frame' fixed; all references to 'delay' finally expunged (they were there only to help "legal" missing values).
+
+1/3/2010: 'with' statements now debugged, in separate "function" window. Only triggered if in step mode, and only for 'with.default' method. Should extend to 'within', and maybe use similar mechanism for 'try'/'tryCatch'
+
+5/4/2010: bugs fixed with 'Recall' and 'match.call'
+
+6/4/2010: 'with'-style step-into added for 'eval', 'evalq', 'try'. 'step.into.funs' added to control this behaviour.
+
+7/4/2010: bug fixed with changed behaviour of for- and while- loops in R 2.10; these now return NULL.
+
+
+
