@@ -28,5 +28,16 @@
 
 7/4/2010: bug fixed with changed behaviour of for- and while- loops in R 2.10; these now return NULL.
 
+7/5/2010: bugs fixed for single-statement 'with', for 'enclos' argument in 'eval'/'evalq'/'with', and for launching multiple windows at once (when a parent's window wasn't launched until a child ran). 
+ - Added support for 'within'. 
+ - All methods of 'with' and 'within' in base-R are now handled seamlessly.
+ - Note sneaky trick to trigger go-mode automatically; just put go() inside a breakpoint.
+ 
+20/7/2010: experimental support for time limit on autoprint, via 'debug.print.time.limit' in 'options()' 
+ 
+27/7/2010: bug fix
+ - couldn't qqq() when mtracee was called by 'try'-- now uses a new error class that 'try' shouldn't catch
+
+
 
 

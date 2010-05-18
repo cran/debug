@@ -21,13 +21,13 @@ Conditional breakpoints are just expressions other than \code{TRUE} or \code{FAL
 
 Sometimes it is useful to clear the line 1 breakpoint before invoking a function, especially if the function is being called repeatedly. The debugger actually starts in go mode, and does not display a code window or pause for input until a breakpoint is triggered; so if the line 1 breakpoint is cleared, execution can continue at full speed until an error occurs (or another breakpoint is triggered). To adjust breakpoints before a function is invoked, you will need to use the \code{fname} argument. To set/clear breakpoints in function \code{f} at lines other than 1, first type \code{tracees$f$line.list} to see which line numbers correspond to which statements.
 
-Breakpoints in body code apply "globally" to all incarnations of a function, and will be retained when the debugger finishes and the R prompt returns. Breakpoint expressions for \code{f} will be saved in \code{tracees$f$breakpoints}.
+Breakpoints in body code apply "globally" to all incarnations of a function, and will be retained when the debugger finishes and the R{} prompt returns. Breakpoint expressions for \code{f} will be saved in \code{tracees$f$breakpoints}.
 
 Breakpoints can be set in \code{on.exit} code as well (but are specific to the incarnation they are set in). It is often useful to set a breakpoint at the first exit code statement (which will be \code{NULL} if \code{on.exit} has not yet been called); this has the effect of a "run-until-finished-then-pause" breakpoint. Whenever \code{on.exit} is called, any existing exit code breakpoints are lost; but if any were present, a new unconditional breakpoint is set at the start of the exit code.
 
 Breakpoints are evaluated in step mode too, but the debugger remains in step mode whatever the result.
 
-At present, all breakpoints are destroyed when functions are edited (though if you use \code{fixr}, \code{\link{mtrace}} will be re-applied automatically). However, the S+ versions of \code{debug} and \code{mvbutils} make an effort to preserve breakpoints across edits, and I plan to introduce something similar in R.
+At present, all breakpoints are destroyed when functions are edited; if you use \code{fixr}, \code{\link{mtrace}} will be re-applied automatically, but breakpoints will be lost. However, the S+ versions of \code{debug} and \code{mvbutils} make an effort to preserve breakpoints across edits, and I plan to introduce something similar in R{}. (The documentation has said "I plan" for about 5 years now\dots{})
 }
 \seealso{\code{\link{mtrace}}, \code{\link{go}}}
 \examples{

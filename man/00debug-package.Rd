@@ -51,20 +51,26 @@ You can debug several functions "at once" (e.g. if \code{f} calls \code{g}, you 
 
 For statements typed in at the D(\dots{})> prompt, only the first syntactically-complete R{} expression will be executed; thus, typing \code{a <- 1; a <- 2} will set \code{a} to 1, but typing \code{{ a <- 1; a <- 2}} will set \code{a} to 2.
 
-See section SPECIAL.FUNCTIONS for handling of \code{try}, \code{with}, \code{eval}, and \code{evalq}.
+See section SPECIAL.FUNCTIONS for handling of \code{try}, \code{with}, \code{within}, \code{eval}, and \code{evalq}.
 
 S3 methods work fine with \code{\link{mtrace}}, but S4 methods don't unless you do something special. My suspicion is that they will work OK if you can somehow pass the true name of the method to \code{\link{mtrace}}, along with its environment using the \code{from} argument. This is probably fixable, but low priority unless I get lots of requests; I have no plans to write S4 methods, and hope not to have to debug other people's!
 
 For further information, see R-news 3/3.
 }
 \section{Special functions}{
-Certain system functions with "code" arguments are handled specially in step-mode: currently \code{try}, \code{eval}, \code{evalq} and \code{with} (see below for \code{within}). In step-mode only, the code in these is stepped-into by default if it is more than a simple statement, using a new code window. In go-mode, and in step-mode if the default behaviour has been changed, these functions are handled entirely by R{}. Hence, if you are in go-mode and an error occurs in one of these statements, the debugger will stop at the \code{with} etc. statement, not inside it; but you can step inside by pressing <ENTER>. The step-into-in-step-mode behaviour can be controlled globally using \code{step.into.funs}. To avoid step-in at a specific line, you can also just use \code{\link{go}} to proceed to the following statement; this can be much faster than first stepping-in and then calling \code{\link{go}}, because R{} itself handles the evaluation.
+Certain system functions with "code" arguments are handled specially in step-mode: currently \code{try}, \code{eval}, \code{evalq}, \code{with}, and \code{within}. In step-mode only, your code argument in these is stepped-into by default if it is more than a simple statement, using a new code window. In go-mode, and in step-mode if the default behaviour has been changed, these functions are handled entirely by R{}. Hence, if you are in go-mode and an error occurs in one of these statements, the debugger will stop at the \code{with} etc. statement, not inside it; but you can then step inside by pressing <ENTER>. The step-into-in-step-mode behaviour can be controlled globally using \code{\link{step.into.sysfuns}}. To avoid step-in at a specific line, you can also just use \code{\link{go}} to proceed to the following statement; this can be much faster than first stepping-in and then calling \code{\link{go}}, because R{} itself handles the evaluation.
 
-To mimic the true behaviour of \code{try}, the debugger should really just return a \code{try-error} if there is an error. However, that is probably not what you want when debugging. Instead, the debugger just behaves as usual with errors, i.e. it breaks into step-mode. If you do then want \code{try} to return the \code{try-error}, just as it would if you weren't debugging, type \code{return( last.try.error())}.
+To mimic the true behaviour of \code{try}, the debugger should really just return a \code{"try-error"} object if there is an error. However, that is probably not what you want when debugging. Instead, the debugger just behaves as usual with errors, i.e. it breaks into step-mode. If you do then want \code{try} to return the \code{try-error}, just as it would if you weren't debugging, type \code{return( last.try.error())}.
 
-Note that the code window for \code{with} etc. contains an on-exit block, just like normal debugger code windows. Its main use is probably to let you set a breakpoint-on-return. However, it seems that you can successfully put \code{on.exit} statements inside your \code{eval} etc. call, whether debugging or not.
+Note that the code window for \code{with}, \code{eval}, etc. contains an on-exit block, just like normal debugger code windows. Its main use is probably to let you set a breakpoint-on-return. However, it seems that you can successfully put \code{on.exit} statements inside your \code{eval} etc. call, whether debugging or not.
 
-For \code{within}, just \code{mtrace( within.data.frame)}, assuming you're about to apply it to a \code{data.frame}.
+\code{with} and \code{within} are S3 generics, and the \pkg{debug} package only knows how to deal with the standard methods: currently \code{with.default}, \code{within.data.frame}, and \code{within.list}. You can debug specific methods manually, e.g. via \code{mtrace( with.myS3class)}.
+
+\code{within} is more complicated than the others, and two extra code windows are currently used: one for the code of \code{within} itself, and one for your statement. The operation of \code{within} itself is not usually very interesting, so the debugger does not pause except at the end of it, unless there is an error. Errors can occur during the updating of your object, which happens after your expression has been evaluated, e.g. from
+
+\preformatted{
+within( data.frame(), bad <- quote( symbols.not.allowed))
+}
 }
 \section{Options}{
 As of version 1.2.0, output is sent \emph{by default} to "stderr"; this means that you get to see the step-mode output even if the debuggee is redirecting "real" output (e.g. via \code{sink}). If you don't like this (and I believe Tinn-R doesn't), set \code{options( debug.catfile="stdout")}.
@@ -85,7 +91,7 @@ Various TCL/TK-related aspects of the code window can be altered:
 }
 }
 \note{
-\bold{Display bugs}: There have been sporadic and unreproduceable display problems with the TCL/TK window; sometimes the window frame will appear, but with garbled contents or no contents at all. With RTERM in MS-Windows, a couple of ALT-TABs and mouse clicks to change focus are sometimes necessary. In extremis, the window will eventually sort itself out if you manually minimize, maximize, and restore it-- admittedly an irritation. Although the problem seems less frequent these days, I'm not convinced it is fully solved.
+\bold{Display bugs}: There have been sporadic and unreproduceable display problems with the TCL/TK window (though, as of May 2010, I haven't experienced any for a couple of years). Sometimes the window frame will appear, but with garbled contents or no contents at all. With RTERM in MS-Windows, a couple of ALT-TABs and mouse clicks to change focus are sometimes necessary. In extremis, the window will eventually sort itself out if you manually minimize, maximize, and restore it-- admittedly an irritation. Although the problem seems less frequent these days, I'm not convinced it is fully solved.
 
 If you encounter this problem, try setting \code{options(shakeup.debug.windows=TRUE)} (also in \code{.First}). The price paid for setting this option, is that window focus will switch away from R{} to the new code window when the latter is first created, which is mildly irritating. On MS-Windows, I have a fix for that too, but it requires a DLL written in Delphi not C, so I can't CRAN it; let me know if you are desperate.
 
@@ -98,6 +104,6 @@ For ESS users: I'm not an Emacs user and so haven't tried ESS with the \pkg{debu
 \item Command recall probably won't work inside the debugger (or if it does, it's thanks to ESS rather than to R{}'s own command recall mechanism). It should be disabled by default; if you do get error messages about "history not available", make sure to set \code{options( debug.command.recall=FALSE)} before debugging.
 }
 }
-\seealso{\code{\link{mtrace}}, \code{\link{go}}, \code{\link{skip}}, \code{\link{qqq}}, \code{\link{bp}}, \code{\link{get.retval}}, \code{\link{mtrace.off}}, \code{\link{check.for.tracees}}, \code{step.into.funs}, \code{\link{last.try.error}}}
+\seealso{\code{\link{mtrace}}, \code{\link{go}}, \code{\link{skip}}, \code{\link{qqq}}, \code{\link{bp}}, \code{\link{get.retval}}, \code{\link{mtrace.off}}, \code{\link{check.for.tracees}}, \code{\link{step.into.sysfuns}}, \code{\link{last.try.error}}}
 \author{Mark Bravington}
 \keyword{debugging}

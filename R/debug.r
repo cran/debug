@@ -44,7 +44,12 @@ function( libname, pkgname) {
   set.presave.hook.mvb( untracer.env)
   evalq({ 
     tracees <- list()
-    step.intos <- c( with=TRUE, eval=TRUE, evalq=TRUE, try=TRUE)
+    if( getRversion() >= '2.12') {
+      my.index <-  function( x, i) if( length( i)) `[[`( x, i) else x
+      my.index.assign <- function( x, i, value) if( length( i)) `[[<-`( x, i, value) else value
+    }
+    environment( my.index) <- baseenv()
+    step.intos <- c( with=TRUE, within=TRUE, eval=TRUE, evalq=TRUE, try=TRUE)
   }, asNamespace( pkgname)) #environment( sys.function()))
   dont.lockBindings( c( 'tracees', 'step.intos'), pkgname)
   
@@ -74,6 +79,12 @@ function( nlocal=sys.parent(), l) mlocal({
     old.l <- l }
 
   tksee( line.list.win, l)
+
+# Make sure breakpoints show OK
+  for( l in seq_along( breakpoints)) {
+    colour <- if( mark.bp( breakpoints[[l]])) 'red' else 'white'
+    tkitemconfigure( bp.win, screen.line( l), foreground=colour, selectforeground=colour)
+  }
 })
 
 
@@ -119,7 +130,7 @@ function( expr, width=options()$width, numbering=TRUE, cat.on.exit=FALSE,
       answer
     }
 
-# Utility functions
+# Utility functions. As of R 2.12, needed only for consistent treatment of 0-length subs
   assign( '[[', my.index)
   assign( '[[<-', my.index.assign)
 
@@ -146,32 +157,32 @@ function( expr, width=options()$width, numbering=TRUE, cat.on.exit=FALSE,
   if( 'debug' %in% loadedNamespaces()) {
     debuggify.system.call <- 
       function( step.check=FALSE, nlocal=sys.parent()) mlocal( 
-        expr[[ i,1]] <- if( step.check)
+        expr[[ c( i,1)]] <- if( step.check)
            substitute( 
             {if( debug:::stepping( call.type)) 
               debug:::debug.fun.name 
             else 
               orig.fun.name}, 
             list( call.type=call.type, 
-              debug.fun.name=as.name( 'debug.' %&% as.character( expr[[ i, 1]])),
-              orig.fun.name=expr[[i,1]]))
+              debug.fun.name=as.name( 'debug.' %&% as.character( expr[[ c( i, 1)]])),
+              orig.fun.name=expr[[ c( i,1)]]))
           else # not step check
-            call( ':::', quote( debug), as.name( 'debug.' %&% as.character( expr[[ i, 1]])))
+            call( ':::', quote( debug), as.name( 'debug.' %&% as.character( expr[[ c( i, 1)]])))
       ) # mlocal
   } else { # debug not loaded namespace-- dunno how this would be possible?!
     debuggify.system.call <- 
       function( step.check=FALSE, nlocal=sys.parent()) mlocal( 
-        expr[[ i,1 ]] <- if( step.check)
+        expr[[ c( i,1) ]] <- if( step.check)
            substitute( 
             {if( stepping( call.type)) 
               debug.fun.name 
             else 
               orig.fun.name}, 
             list( call.type=call.type, 
-              debug.fun.name=as.name( 'debug.' %&% as.character( expr[[ i, 1]])),
-              orig.fun.name=expr[[i,1]]))
+              debug.fun.name=as.name( 'debug.' %&% as.character( expr[[ c( i, 1)]])),
+              orig.fun.name=expr[[ c( i, 1)]]))
           else
-            as.name( 'debug.' %&% as.character( expr[[ i, 1]]))
+            as.name( 'debug.' %&% as.character( expr[[ c( i, 1)]]))
       ) # mlocal
   }
         
@@ -200,23 +211,26 @@ function( expr, width=options()$width, numbering=TRUE, cat.on.exit=FALSE,
   indents <- numeric( 0)
 
   while( length(i) ) {
+      #cat( 'Expr subscript ', i, '\n  Expression:\n')
+      #print( expr[[i]])
     needs.a.number <- TRUE
     next.i <- numeric( 0)
-    call.above <- as.character( expr[[ i[ -length( i)], 1]])
+    call.above <- as.character( expr[[ c( clip( i), 1)]])
 
     if( i[ length( i)] != 1 && call.above=='switch') { # need to insert line with switch option
       add.to.last.line( ',')
-      if( i[ length( i)] < length( expr[[ i[ -length( i)] ]]) )
-        line.list <- c( line.list, tabs(-1) %&% "'" %&% names( expr[[ i[ -length( i)] ]])[ i[ length( i)] ] %&% "' = ")
+      if( i[ length( i)] < length( expr[[ clip( i)]]) )
+        line.list <- c( line.list, tabs(-1) %&% "'" %&% names( expr[[ clip( i)]])[ i[ length( i)] ] %&% "' = ")
     } # if inside "switch"
 
-    if( mode( expr[[ i]])=='(' || !is.call( expr[[ i]]) ) { # first test because is.call( '(a)') is TRUE but mode='(' !!
+    if( mode( expr[[ i]])=='(' || !is.call( expr[[ i]]) ) { 
+      # ...first test is because is.call( '(a)') is TRUE but mode='(' !!
   #   SYMBOL or PRIMITIVE element-- or '('ed thing
       anything.to.add <- deparse1( expr[[ i]])
       if( nchar( anything.to.add)) # won't be in e.g. empty { } or switch( ..., a=, ...)
         line.list <- c( line.list, tabs() %&% anything.to.add)
     } else {
-         call.type <- expr[[ i, 1]]
+         call.type <- expr[[ c( i, 1)]]
          if( !is.name( call.type))
            call.type <- 'default' # to cope with e.g. x$fun( args)
          else
@@ -241,22 +255,23 @@ function( expr, width=options()$width, numbering=TRUE, cat.on.exit=FALSE,
               line.list <- c( line.list, tabs())
               make.indent()
             } # otherwise we've got "else-if" which has slightly different formatting
-            add.to.last.line( 'if( ' %&% deparse1( expr[[ i, 2]]) %&% ')')
+            add.to.last.line( 'if( ' %&% deparse1( expr[[ c( i, 2)]]) %&% ')')
             next.i <- c( i, 3)
           },
         'switch' = {
-            line.list <- c( line.list, tabs() %&% 'switch( ' %&% deparse1( expr[[ i, 2]]))
+            line.list <- c( line.list, tabs() %&% 'switch( ' %&% deparse1( expr[[ c( i, 2)]]))
             make.indent(2)
             suffix[ ch( i)] <- ')'
             next.i <- c( i, 3)
           },
         'for' = {
-            line.list <- c( line.list, paste( tabs(), 'for( ', expr[[ i, 2]], ' in ', deparse1( expr[[ i, 3]]), ' )', sep=''))
+            line.list <- c( line.list, paste( tabs(), 'for( ', expr[[ c( i, 2)]], ' in ', 
+                deparse1( expr[[ c( i, 3)]]), ' )', sep=''))
             make.indent( loop=TRUE)
             next.i <- c( i, 4)
           },
         'while' = {
-            line.list <- c( line.list, paste( tabs(), 'while( ', deparse1( expr[[ i, 2]]), ' )', sep=''))
+            line.list <- c( line.list, paste( tabs(), 'while( ', deparse1( expr[[ c( i, 2)]]), ' )', sep=''))
             make.indent( loop=TRUE)
             next.i <- c( i, 3)
           },
@@ -286,6 +301,7 @@ function( expr, width=options()$width, numbering=TRUE, cat.on.exit=FALSE,
               debuggify.system.call()
             },
          'with' =,
+         'within' =,
          'try' =,
          'eval' =,
          'evalq' = {
@@ -352,8 +368,9 @@ function( expr, width=options()$width, numbering=TRUE, cat.on.exit=FALSE,
 
 "addnum.move.to.next.expr" <-
 function( nlocal=sys.parent(), final) mlocal({
+  # cat( 'AMTNE: ', i, '\n')
   final <- i[ length( i)]
-  if( length( expr[[ i[-length(i)] ]]) <= i[ length( i)]) { # BACK UP 1 LEVEL
+  if( length( expr[[ clip( i)]]) <= i[ length( i)]) { # BACK UP 1 LEVEL
     i <- i[ -length( i)]
     if( !length( i))
 return( local.return())
@@ -361,12 +378,12 @@ return( local.return())
     add.to.last.line( suffix[ ch(i)])
     if( !is.na( this.indent <- indents[ ch( i)]))
       n.tabs <- n.tabs - this.indent
-    if( is.call( expr[[ i]]) && as.character( expr[[ i, 1]]) %in% c( 'for', 'while', 'repeat') )
+    if( is.call( expr[[ i]]) && as.character( expr[[ c( i, 1)]]) %in% c( 'for', 'while', 'repeat') )
       last.loop.tabs <- last.loop.tabs[ -length( last.loop.tabs) ]
 
     addnum.move.to.next.expr()
   } else { # NORMAL
-    if( final==3 & as.character( expr[[ i[ -length( i)], 1]])=='if' && length( expr[[ i[ -length( i)] ]])==4) # "ELSE"
+    if( final==3 & as.character( expr[[ c( clip( i), 1)]])=='if' && length( expr[[ clip( i)]])==4) # "ELSE"
       line.list <- c( line.list, tabs(-1) %&% 'else ')
 
     i[ length( i)] <- i[ length( i)] + 1
@@ -376,10 +393,9 @@ return( local.return())
 
 "backtrack.to.loop" <-
 function( expr, i) {
-  assign( '[[', my.index)
   i.try <- clip( i)
   while( length( i.try) && (!is.call( expr[[ i.try]]) ||
-      !(paste( as.character( expr[[ i.try, 1]]), collapse=' ') %in% c( 'for', 'while', 'repeat')) ) )
+      !(paste( as.character( expr[[ c( i.try, 1)]]), collapse=' ') %in% c( 'for', 'while', 'repeat')) ) )
     i.try <- clip( i.try)
 
   i.try
@@ -459,14 +475,16 @@ return( character( 0))
 
 "check.legality" <-
 function( thing, call.type) do.in.envir( envir=find.debug.HQ( FALSE), {
-# Trap non-logical first arguments to "if", "while", and non-subsettable arguments to "for" e.g. for( i in call( 'abc'))
-#cat( 'Checking legality in call.type', call.type, 'of', thing, '\n')
+# Trap non-logical first arguments to "if", "while", and 
+# ...non-subsettable arguments to "for" e.g. for( i in call( 'abc'))
+# cat( 'Checking legality in call.type', call.type, 'of', thing, '\n')
 
 # Can issue warning, or cause error, or neither, depending on getOption( 'warn')
 
   if( call.type %in% c( 'if', 'while') &&
       ( (typeof( thing) %in% dodgy.if.while.types || is.na( as.logical( thing)[ 1])) ||
-        ( (length( thing) > 1) && (try( list( eval( substitute( if( thing) TRUE), envir=parent.frame()))) %is.a% 'try-error'))))
+        ( (length( thing) > 1) && 
+        (try( list( eval( substitute( if( thing) TRUE), envir=parent.frame()))) %is.a% 'try-error'))))
     message <- 'illegal if/while test'            
   else if( call.type == 'for' && typeof( thing) %in% dodgy.for.counter.types)
     message <- 'illegal for-loop counter'
@@ -541,7 +559,7 @@ function( expr, envir = parent.frame(), enclos = if (is.list(envir) ||
   
     mc$expr <- call( eval.name)
     ans <- eval( substitute( get( eval.name, envir=sys.frame( n))(), 
-        list( eval.name=eval.name, n=sys.nframe())), envir=envir)
+        list( eval.name=eval.name, n=sys.nframe())), envir=envir, enclos=enclos)
   } else {
     mc[[1]] <- quote( eval)
     mc$fun.name <- NULL
@@ -730,7 +748,7 @@ function( expr, silent=FALSE) {
 function( data, expr, ...){
   # Don't bother if non-default
   if( any( ('with.' %&% class( data)) %in% methods( 'with')))
-UseMethod( with) # auto-returns
+UseMethod( 'with') # auto-returns
 
   f.with <- function(...) 9
   body( f.with) <- substitute( expr)
@@ -749,9 +767,62 @@ UseMethod( with) # auto-returns
 return( do.call( with.name, list( ...)))
   } else {
     mc <- match.call( expand.dots=TRUE)
-    mc[[1]] <- quote( 'with')
+    mc[[1]] <- quote( with)
 return( eval( mc, parent.frame()))
   }
+}
+
+
+"debug.within" <-
+function( data, expr, ...){
+  if( !is.list( data)) # within has methods for data.frames (which are lists) and lists
+UseMethod( within) # crash if no method; if there is, debug doesn't know how to handle it
+
+  # Create a dummy function to execute 'expr
+  f.within <- function(...) 9
+  body( f.within) <- substitute( expr)
+  e <- new.env( parent=parent.frame())
+  for( i in names( data))
+    e[[ i]] <- data[[i]]
+  environment( f.within) <- e
+  
+  within.name <- tail( find.debug.HQ( FALSE)$.frames.$window.name, 1) %&% '.within'
+  assign( within.name, f.within)
+  mtrace( char.fname=within.name)
+  # Don't stop for single statements, except on error
+  if( tracees[[ within.name]]$n <= 2) 
+    bp( 1, FALSE, fname=within.name)
+  on.exit( try( mtrace( char.fname=within.name, tracing=FALSE), silent=TRUE))
+  
+  # Now create a dummy 'within' function, that calls 'debug.eval' instead of 'debug'...
+  # ... NB *without* checking whether we are stopping for evals, which would be the norm
+  
+  # Could just hardwire 'within...' code here, but hopefully future-proof it by...
+  # ... substituting the 'eval' call. Hopefully only one of them, gulp.
+  withindef <- if( is.data.frame( data)) within.data.frame else within.list
+  body( withindef) <- do.call( 'substitute', list( body( withindef), 
+    list( eval=quote( debug:::debug.eval))))
+
+  within.wrapper.name <- 'withindef.' %&% within.name
+  assign( within.wrapper.name, withindef)
+  mtrace( char.fname=within.wrapper.name)
+  
+  # Inside the wrapper, stop only at the end, unless there's an error
+  tracees[[ within.wrapper.name]] <<- within( tracees[[ within.wrapper.name]], {
+    # Tidy up display
+    oline <- grep( 'debug:::debug.eval', line.list, fixed=TRUE)[1]
+    line.list[ oline] <- sub( 'debug:::debug.eval', 'eval', line.list[ oline], fixed=TRUE)
+    breakpoint[[1]] <- quote( {go(); FALSE}) # put into go-mode at start and...
+    breakpoint[[1+sum(nzchar(names(line.list)[1:oline]))]] <- 
+        quote( {go(); FALSE}) # ... and after eval 
+    breakpoint[[ length( breakpoint)]] <- TRUE #... back to step-mode at the end.
+    rm( oline)
+  })
+  on.exit( try( mtrace( char.fname=within.wrapper.name, tracing=FALSE), silent=TRUE), add=TRUE)  
+
+  mc <- match.call(expand.dots=TRUE)
+  mc[[1]] <- get( within.wrapper.name)
+return( eval( mc, parent.frame()))
 }
 
 
@@ -869,8 +940,15 @@ break # and then return
         cat( '\rNo ', file=debug.catfile())
 #        opt <- options(show.error.messages=FALSE)
 #        cat( 'SEM=', opt$show.error.messages, '\n', file=debug.catfile())
-#				on.exit( options(opt), add=TRUE)
-stop( 'merely quitting mvb\'s debugger') }
+#       on.exit( options(opt), add=TRUE)
+
+        # If func is being called inside 'try', 'stop' alone won't quit...
+        # ... so make up a fake error
+        stoppo <- simpleError( "merely quitting mvb's debugger")
+        class( stoppo) <- c( 'stoppo.debug', 'condition')
+stop( stoppo)      
+        #stop( 'merely quitting mvb\'s debugger', call.=FALSE)
+      } # if .quit.
 
       .evaluated.OK. <<- TRUE
       .print.result. <<- FALSE
@@ -881,7 +959,9 @@ stop( 'merely quitting mvb\'s debugger') }
       if( !stop.here() || !.step.)
     break
 
-      if( !stopped.yet) { # debug windows aren't launched until we actually stop for input (maybe never if no bp's)
+      if( !stopped.yet) { # debug windows aren't launched until we actually stop for input...
+        # ... maybe never if no bp's
+        # NB must also launch mtrace'd parents that didn't have bp's and so haven't displayed yet
         launch.debug.windows() # win=sdebug.window.name, fun=fname)
         stopped.yet <- TRUE }
       command <- interact()
@@ -1037,6 +1117,15 @@ function (char.fname, from = mvb.sys.parent(), look.for.generics = TRUE)
 }
 
 
+"find.S3.dispatch" <-
+function( obj, gen){
+  # Work out which method will be called
+  poss <- gen %&% '.' %&% c( class( obj), 'default')
+  mm <- match( poss, methods( gen), 0)
+  poss[ mm>0][1] # NA if missing
+}
+
+
 "fun.locator" <-
 function( fname, from=.GlobalEnv, mode='function') {
   if( typeof( from)=='closure')
@@ -1092,6 +1181,20 @@ function( fname, from=.GlobalEnv, mode='function') {
 }
 
 
+"get.mtraced.callers" <-
+function(){
+  # Return CONTROL frames of callers that are mtrace'd
+  splist <- sys.parent( 1)
+  while( tail( splist, 1)>0) {
+    splist <- c( splist, sys.parent( length( splist)+1))
+    if( tail( splist, 1) %in% clip( splist)) # found already, e.g. if nlminb is calling
+  break
+}
+  frames <- find.debug.HQ( FALSE)$.frames.
+return( evalq( debug[ actual %in% splist], frames))
+}
+
+
 "get.retval" <-
 function() do.in.envir( envir=sys.frame( find.active.control.frame()), 
  j
@@ -1124,8 +1227,9 @@ return( .nothing.) }
 
 
 "interact" <-
-function( nlocal=sys.parent(), input) mlocal({
-  .update.debug.window()
+function( nlocal=sys.parent(), input, i) mlocal({
+  for( i in get.mtraced.callers())
+    .update.debug.window(nlocal=i)
 
 #  BELIEVED OBSOLETE:
 #  if( exists( 'r.window.handle', 'mvb.session.info'))
@@ -1187,106 +1291,125 @@ function() structure( geterrmessage(), class='try-error')
 
 "launch.debug.windows" <-
 function() do.in.envir( envir=find.debug.HQ( FALSE), {
-  top <- tktoplevel( )
-  if( !is.null( debug.first.window.hook <- getOption( 'debug.first.window.hook')))
-    debug.first.window.hook()
   for( i.win in index( !.frames.$has.window.yet)) { # i.e. not launched yet
 #  cat( 'Launching', .frames.$window.name[ i.win], '\n')
-    debug.env <- sys.frame( .frames.$debug[ i.win])
-    line.list <- get( 'line.list', envir=debug.env)
-    breakpoints <- get( 'breakpoints', envir=debug.env)
-    nl <- length( line.list)
-    tktitle( top) <- .frames.$window.name[ i.win]
-    # TODO: define def.screen.pos to be a bit smarter about window placement
-    # NB tkwinfo( 'screenwidth', top)
-    screen.pos <- option.or.default( 'debug.screen.pos', '+5-5') # was +5-5
-    font <- option.or.default( 'debug.font', 'Courier')
-    height <- option.or.default( 'debug.height', 10)
-    width <- option.or.default( 'debug.width', 120)
+    if( !is.null( debug.first.window.hook <- getOption( 'debug.first.window.hook')))
+      debug.first.window.hook()
+
+    setup.tcltk.in.control.frame( title=.frames.$window.name[ i.win], nlocal=.frames.$debug[ i.win]) 
     
-#    lapply( screen.pos, function( x) tkwm.geometry( top, x)) # to allow several calls
-
-  #  buttons <- tkframe(top)
-  #  tkpack(buttons, side="bottom", fill="x")#, pady="2m")
-  #  go.button_ tkbutton( buttons, text='Run', command=function() { pushBack( 'hello', stdin(), newLine=TRUE); push.to.foreground( r.window.handle) })
-  #  goto.button_ tkbutton( buttons, text='Run to selection', command=function() '27')
-  #  tkpack( go.button, goto.button, side='left', expand=TRUE)
-
-    # First create the objects, then link them with 'tkconfigure'
-    listio <- tklistbox( top, font=font, bg='white', fg=option.or.default( 'debug.fg', 'black'),
-        height=height, width=width, setgrid=TRUE, borderwidth=0)
-    show.bp <- tklistbox( top, font=font, fg='white', bg='white', selectforeground='blue', 
-        height=height, setgrid=TRUE, width=1, borderwidth=0, takefocus=FALSE)
-    yscrollio <- tkscrollbar( top)
-    xscrollio <- tkscrollbar( top, orient='horizontal')
-
-    tkconfigure( yscrollio,
-        command=function(...) { 
-          tkyview( listio,...); tkyview( show.bp, ...) } )
-    tkconfigure( xscrollio, 
-        command=function(...) tkxview( listio, ...))
-    tkconfigure( listio, 
-        yscroll=function(...) { 
-          tkset( yscrollio,...); tkyview( show.bp, 'moveto', list(...)[[1]]) },
-        xscroll=function(...) 
-          tkset( xscrollio, ...)) 
-    tkconfigure( show.bp, 
-        yscroll=function(...) { 
-          tkset( yscrollio,...); tkyview( listio, 'moveto', list(...)[[1]]) })
-
-    # tkinsert doesn't allow length>1 vectors any more; also need to strip names. Hence:
-    do.call( 'tkinsert', c( list( listio, 'end'), as.vector( line.list))) 
-    do.call( 'tkinsert', c( list( show.bp, 'end'), rep( '*', nl)))
-
-    # tkpack(buttons, side="bottom", fill="x")#, pady="2m")
-    # tkpack( go.button, goto.button, side='left', expand=TRUE)
-
-    tkpack( xscrollio, side='bottom', fill='x')
-    tkpack( yscrollio, side='right', fill='y')
-    tkpack( show.bp, listio, side='left', fill='both', expand=TRUE, ipadx=0)
-    
-    lapply( screen.pos, function( x) tkwm.geometry( top, x)) # to allow several calls
-    
-    tkfocus( listio)
-    tkselection.set( listio, 0)
-
-    bp.list <- unlist( lapply( breakpoints, mark.bp), use.names=F)
-    bps <- rep( FALSE, nl)
-#    cat( "nl=", nl, "length( bp.list)=", length( bp.list), 'n.names=', sum( names( line.list) != ''),
-#        '\n')
-    bps[ names( line.list) != ''] <- bp.list
-    for( i in index( bps))
-      tkitemconfigure( show.bp, i-1, foreground='red', selectforeground='red')
-
-    .Tcl( 'update') # not idletasks; worth a try
-
-    # Wake up the window manager, avoiding redraw problems
-    # Side-effect is to switch focus to the code window
-    # May not be necessary on your system
-    if( option.or.default( 'shakeup.debug.windows', FALSE)) {
-      tkwm.withdraw( top)
-      tkwm.deiconify( top)
-    }
-
-    if( FALSE && R.version$os=='mingw32' && exists( 'set.window.state') && is.loaded( 'enumerate_running')) { 
+    if( FALSE && R.version$os=='mingw32' && exists( 'set.window.state') && 
+        is.loaded( 'enumerate_running')) { 
       # Circumvent TCL/TK bug that makes windows appear without text. Hopefully it's Windows-specific
       win.num <- windows.running( .frames.$window.name[ i.win])
       for( ij in c( 2, 1, 5))
         set.window.state( win.num, ij) }
-
-  # Now put window pointers into the right debugging frame. This is clunky
-    eval( substitute( {
-        tcl.win <- top
-        line.list.win <- listio
-        bp.win <- show.bp }),
-      envir=sys.frame( .frames.$debug[ i.win]))
-
-  # and record successful launch
+        
+    # Record successful launch
     .frames.$has.window.yet[ i.win] <<- TRUE
-  }
-  
-  if( !is.null( debug.post.window.launch.hook <- getOption( 'debug.post.window.launch.hook')))
-    debug.post.window.launch.hook()
+    
+    if( !is.null( debug.post.window.launch.hook <- getOption( 'debug.post.window.launch.hook')))
+      debug.post.window.launch.hook()
+  } # for i.win in not-launched-yet
+
+#      
+#    top <- tktoplevel( )
+#    debug.env <- sys.frame( .frames.$debug[ i.win])
+#    line.list <- get( 'line.list', envir=debug.env)
+#    breakpoints <- get( 'breakpoints', envir=debug.env)
+#    nl <- length( line.list)
+#    tktitle( top) <- .frames.$window.name[ i.win]
+#    # TODO: define def.screen.pos to be a bit smarter about window placement
+#    # NB tkwinfo( 'screenwidth', top)
+#    screen.pos <- option.or.default( 'debug.screen.pos', '+5-5') # was +5-5
+#    font <- option.or.default( 'debug.font', 'Courier')
+#    height <- option.or.default( 'debug.height', 10)
+#    width <- option.or.default( 'debug.width', 120)
+#    
+##    lapply( screen.pos, function( x) tkwm.geometry( top, x)) # to allow several calls
+#
+#  #  buttons <- tkframe(top)
+#  #  tkpack(buttons, side="bottom", fill="x")#, pady="2m")
+#  #  go.button_ tkbutton( buttons, text='Run', command=function() { pushBack( 'hello', stdin(), newLine=TRUE); push.to.foreground( r.window.handle) })
+#  #  goto.button_ tkbutton( buttons, text='Run to selection', command=function() '27')
+#  #  tkpack( go.button, goto.button, side='left', expand=TRUE)
+#
+#    # First create the objects, then link them with 'tkconfigure'
+#    listio <- tklistbox( top, font=font, bg='white', fg=option.or.default( 'debug.fg', 'black'),
+#        height=height, width=width, setgrid=TRUE, borderwidth=0)
+#    show.bp <- tklistbox( top, font=font, fg='white', bg='white', selectforeground='blue', 
+#        height=height, setgrid=TRUE, width=1, borderwidth=0, takefocus=FALSE)
+#    yscrollio <- tkscrollbar( top)
+#    xscrollio <- tkscrollbar( top, orient='horizontal')
+#
+#    tkconfigure( yscrollio,
+#        command=function(...) { 
+#          tkyview( listio,...); tkyview( show.bp, ...) } )
+#    tkconfigure( xscrollio, 
+#        command=function(...) tkxview( listio, ...))
+#    tkconfigure( listio, 
+#        yscroll=function(...) { 
+#          tkset( yscrollio,...); tkyview( show.bp, 'moveto', list(...)[[1]]) },
+#        xscroll=function(...) 
+#          tkset( xscrollio, ...)) 
+#    tkconfigure( show.bp, 
+#        yscroll=function(...) { 
+#          tkset( yscrollio,...); tkyview( listio, 'moveto', list(...)[[1]]) })
+#
+#    # tkinsert doesn't allow length>1 vectors any more; also need to strip names. Hence:
+#    do.call( 'tkinsert', c( list( listio, 'end'), as.vector( line.list))) 
+#    do.call( 'tkinsert', c( list( show.bp, 'end'), rep( '*', nl)))
+#
+#    # tkpack(buttons, side="bottom", fill="x")#, pady="2m")
+#    # tkpack( go.button, goto.button, side='left', expand=TRUE)
+#
+#    tkpack( xscrollio, side='bottom', fill='x')
+#    tkpack( yscrollio, side='right', fill='y')
+#    tkpack( show.bp, listio, side='left', fill='both', expand=TRUE, ipadx=0)
+#    
+#    lapply( screen.pos, function( x) tkwm.geometry( top, x)) # to allow several calls
+#    
+#    tkfocus( listio)
+#    tkselection.set( listio, 0)
+#
+#    bp.list <- unlist( lapply( breakpoints, mark.bp), use.names=F)
+#    bps <- rep( FALSE, nl)
+#    # cat( "nl=", nl, "length( bp.list)=", length( bp.list), 'n.names=', 
+#    #     sum( names( line.list) != ''), '\n')
+#    bps[ names( line.list) != ''] <- bp.list
+#  
+#    for( i in index( bps))
+#      tkitemconfigure( show.bp, i-1, foreground='red', selectforeground='red')
+#
+#    .Tcl( 'update') # not idletasks; worth a try
+#
+#    # Wake up the window manager, avoiding redraw problems
+#    # Side-effect is to switch focus to the code window
+#    # May not be necessary on your system
+#    if( option.or.default( 'shakeup.debug.windows', FALSE)) {
+#      tkwm.withdraw( top)
+#      tkwm.deiconify( top)
+#    }
+#
+#    if( FALSE && R.version$os=='mingw32' && exists( 'set.window.state') && 
+#        is.loaded( 'enumerate_running')) { 
+#      # Circumvent TCL/TK bug that makes windows appear without text. Hopefully it's Windows-specific
+#      win.num <- windows.running( .frames.$window.name[ i.win])
+#      for( ij in c( 2, 1, 5))
+#        set.window.state( win.num, ij) }
+#
+#  # Now put window pointers into the right debugging frame. Changed 5/2010 so that, if a parent
+#  # ...win without breakpoints is only launched when a child window's BP is triggered, then
+#  # ...we don't lose the parent's tcltk environments when the child's control frame destroys itself.
+#  # This is clunky
+#    eval( substitute( {
+#        yscroll.win <- yscrollio
+#        xscroll.win <- xscrollio
+#        tcl.win <- top
+#        line.list.win <- listio
+#        bp.win <- show.bp }),
+#      envir=sys.frame( .frames.$debug[ i.win]))
+
 #  cat( 'Launched OK\n')
 })
 
@@ -1368,8 +1491,8 @@ function( sorted.out=TRUE, nlocal=sys.parent(), original.i, tryout) mlocal({
         sorted.out <- FALSE } # move to expr after switch
       else { # find first non-null expression at or after matched position
         jj <- jj+2
-        while( jj<swlen && is.name( expr[[ i, jj]]) &&
-            !nchar( as.character( expr[[ i, jj]])) )
+        while( jj<swlen && is.name( eij <- expr[[ c( i, jj)]]) &&
+            !nzchar( as.character( eij)))
           jj <- jj+1
         i <- c( i, jj)
       } }
@@ -1385,9 +1508,13 @@ return( local.return())
 
 # Now we try to move
   while( !my.all.equal( i, 1)) { # loop terminates when "sorted.out" and at viable statement
-    # cat( 'Main move loop: i=', ch( i), '\n' )
+    #cat( 'Main move loop: i=', ch( i), '\n' )
+    #cat( 'sorted.out', sorted.out, '\n')
     i.parent <- clip( i)
     parent.call.type <- get.call.type( expr[[ i.parent]])
+    #cat( 'parent call: ', i, '\n  ')
+    #print( expr[[ i.parent]])
+    #cat( 'pct', parent.call.type, '\n')
 
     if( sorted.out && i[ length( i)] <= length( expr[[ i.parent]]) )
 return( local.return())
@@ -1404,9 +1531,9 @@ return( local.return())
       ch.ip <- ch( i.parent)
       if( sorted.out <- length( for.counters[[ ch.ip]])) {
         val <- for.counters[[ ch.ip]][[ 1]]
-        assign( as.character( expr[[ i.parent, 2]]), val, envir=frame)
+        assign( as.character( expr[[ c( i.parent, 2)]]), val, envir=frame)
         if( .step.) {
-          cat( '\nFor-loop counter: ', expr[[ i.parent, 2 ]], '\nValue:\n',
+          cat( '\nFor-loop counter: ', expr[[ c( i.parent, 2) ]], '\nValue:\n',
               file=debug.catfile())
           printIfSmall( val, ofile=debug.catfile())
         }
@@ -1419,11 +1546,11 @@ return( local.return())
     } else if( parent.call.type == '<-') { 
       # This has to be a bit weird to prevent the call to '<-' from over-evaluating
       if( missing( j)){ # but presumably legally, e.g. via formals( fun)$arg.with.no.default
-        callo <- call( '<-', expr[[ i.parent, 2]], quote( formals( glm)$subset))
+        callo <- call( '<-', expr[[ c( i.parent, 2)]], quote( formals( glm)$subset))
         eval( callo, envir=frame)
         .evaluated.OK. <<- TRUE
       } else {
-        callo <- call( '<-', expr[[ i.parent, 2]], call( 'quote', j))
+        callo <- call( '<-', expr[[ c( i.parent, 2)]], call( 'quote', j))
         tryout <- try2( list( eval( callo, envir=frame))) # list wrap new in 10/2008
         .evaluated.OK. <<- (tryout %is.not.a% 'try-error') 
       }
@@ -1432,13 +1559,15 @@ return( local.return())
       if( !.evaluated.OK.) {
         i <- original.i # back out
 return( local.return())
-      }
+      } # if not eval OK
+      
       i <- i.parent
-      sorted.out <- FALSE }
-    else if( parent.call.type %in% c( 'if', 'switch')) { # can't see what else it might be
+      sorted.out <- FALSE
+    } else if( parent.call.type %in% c( 'if', 'switch')) { # can't see what else it might be
       i <- i.parent # but must move on
-      sorted.out <- FALSE }
-  }
+      sorted.out <- FALSE 
+    } # parent call type
+  } # while anything left to do
 
 # If we are here, then i==1 and we are meant to move to return-value breakpoint
   i <- 2
@@ -1611,11 +1740,27 @@ function(x, ..., ofile=stdout()) {
   osx <- try( object.size( x), silent=TRUE)
   if( osx %is.a% 'try-error')
     osx <- NA
+  
   if( !is.na( osx) && osx < option.or.default( 'threshold.debug.autoprint.size', 8192)) {
+    # Also check for too long
+    # Code below is bad because "Error..." is printed even when it's just taking too long
+    # Also, would be nice to preserve existing time limits if any... somehow...
+    
+    setTimeLimit( Inf, getOption( 'debug.print.time.limit', 0.5), TRUE)
     try.to.print <- try2( list( capture.output( print(x, ...), file=ofile)))
-    if( try.to.print %is.a% 'try-error')
-      cat( "!! Couldn't successfully print result: ", c( try.to.print), "\n", file=ofile)
-  } else {
+    setTimeLimit( Inf, Inf, TRUE)
+    print.obj.info <- FALSE
+    if( try.to.print %is.a% 'try-error') {
+      if( grepl( 'reached elapsed time limit', c( try.to.print))) {
+        print.obj.info <- TRUE
+        cat( "<<Printing is taking too long... truncated>>\n", file=ofile)
+      } else 
+        cat( "!! Couldn't successfully print result: ", c( try.to.print), "\n", file=ofile)
+    }
+  } else 
+    print.obj.info <- TRUE
+    
+  if( print.obj.info) {
     if(!is.null(class <- attr(x, "class")))
       cat("Class: ", class, " ", file=ofile)
     cat("Mode: ", mode(x), " ", file=ofile)
@@ -1638,7 +1783,7 @@ function() do.in.envir( envir=find.debug.HQ( FALSE), {
 
 "screen.line" <-
 function( l, nlocal=sys.parent()) mlocal(
-  index( nchar( names( line.list))>0)[ l]-1 # tcl starts at 0, aaargh
+  index( nzchar( names( line.list)))[ l]-1 # tcl starts at 0, aaargh
 )
 
 
@@ -1668,6 +1813,7 @@ function( nlocal=sys.parent()) mlocal({
 # Intended to be called only by 'find.debug.HQ'
   assign( '[[', my.index)
   assign( '[[<-', my.index.assign)
+  
   .frames. <- empty.data.frame( actual=, debug=0, function.name=, window.name=, subframe='', has.window.yet=FALSE)
   .nothing. <- structure( 0, class='nullprint') # invisible object
   .step. <- .skip. <- .evaluated.OK. <- .system. <- .print.result. <- .in.users.commands. <- .quit.debug. <- FALSE
@@ -1743,6 +1889,79 @@ function( nlocal=sys.parent()) mlocal({
 })
 
 
+"setup.tcltk.in.control.frame" <-
+function( title, nlocal=sys.parent(), nl, screen.pos, font, height, width, i) mlocal({
+    tcl.win <- tktoplevel( )
+    tktitle( tcl.win) <- title
+
+    nl <- length( line.list)
+    # TODO: define def.screen.pos to be a bit smarter about window placement
+    # NB tkwinfo( 'screenwidth', tcl.win)
+    screen.pos <- option.or.default( 'debug.screen.pos', '+5-5') # was +5-5
+    font <- option.or.default( 'debug.font', 'Courier')
+    height <- option.or.default( 'debug.height', 10)
+    width <- option.or.default( 'debug.width', 120)
+    
+    # First create the objects, then link them with 'tkconfigure'
+    line.list.win <- tklistbox( tcl.win, font=font, bg='white', 
+        fg=option.or.default( 'debug.fg', 'black'),
+        height=height, width=width, setgrid=TRUE, borderwidth=0)
+    bp.win <- tklistbox( tcl.win, font=font, fg='white', bg='white', selectforeground='blue', 
+        height=height, setgrid=TRUE, width=1, borderwidth=0, takefocus=FALSE)
+    yscroll.win <- tkscrollbar( tcl.win)
+    xscroll.win <- tkscrollbar( tcl.win, orient='horizontal')
+
+    tkconfigure( yscroll.win,
+        command=function(...) { 
+          tkyview( line.list.win,...); tkyview( bp.win, ...) } )
+    tkconfigure( xscroll.win, 
+        command=function(...) tkxview( line.list.win, ...))
+    tkconfigure( line.list.win, 
+        yscroll=function(...) { 
+          tkset( yscroll.win,...); tkyview( bp.win, 'moveto', list(...)[[1]]) },
+        xscroll=function(...) 
+          tkset( xscroll.win, ...)) 
+    tkconfigure( bp.win, 
+        yscroll=function(...) { 
+          tkset( yscroll.win,...); tkyview( line.list.win, 'moveto', list(...)[[1]]) })
+
+    # tkinsert doesn't allow length>1 vectors any more; also need to strip names. Hence:
+    do.call( 'tkinsert', c( list( line.list.win, 'end'), as.vector( line.list))) 
+    do.call( 'tkinsert', c( list( bp.win, 'end'), rep( '*', nl)))
+
+    # tkpack(buttons, side="bottom", fill="x")#, pady="2m")
+    # tkpack( go.button, goto.button, side='left', expand=TRUE)
+
+    tkpack( xscroll.win, side='bottom', fill='x')
+    tkpack( yscroll.win, side='right', fill='y')
+    tkpack( bp.win, line.list.win, side='left', fill='both', expand=TRUE, ipadx=0)
+    
+    lapply( screen.pos, function( x) tkwm.geometry( tcl.win, x)) # to allow several calls
+    
+    tkfocus( line.list.win)
+    tkselection.set( line.list.win, 0)
+
+    bp.list <- unlist( lapply( breakpoints, mark.bp), use.names=F)
+    bps <- rep( FALSE, nl)
+    # cat( "nl=", nl, "length( bp.list)=", length( bp.list), 'n.names=', 
+    #     sum( names( line.list) != ''), '\n')
+    bps[ names( line.list) != ''] <- bp.list
+  
+    for( i in index( bps))
+      tkitemconfigure( bp.win, i-1, foreground='red', selectforeground='red')
+      
+    .Tcl( 'update') # not idletasks; worth a try
+
+    # Wake up the window manager, avoiding redraw problems
+    # Side-effect is to switch focus to the code window
+    # May not be necessary on your system
+    if( option.or.default( 'shakeup.debug.windows', FALSE)) {
+      tkwm.withdraw( tcl.win)
+      tkwm.deiconify( tcl.win)
+    }
+})
+
+
 "skip" <-
 function( line.no) do.in.envir( envir=sys.frame( find.active.control.frame()), {
 # This is pretty easy & all we need to check, is that we don't try to move INTO a for-loop
@@ -1764,7 +1983,7 @@ return( .nothing.) }
 
   i.try <- i[ 1 %upto% mm]
   for( j in (mm+1) %upto% length( target))
-    if( !is.call( expr[[ i.try]]) || expr[[ i.try, 1]] != 'for')
+    if( !is.call( expr[[ i.try]]) || expr[[ c( i.try, 1)]] != 'for')
       i.try <- c( i.try, target[j])
     else {
       cat( "Can't skip into a new for-loop: stopping at the beginning of the for-loop instead\n")
