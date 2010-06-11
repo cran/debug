@@ -1,7 +1,7 @@
 \name{is.mtraced}
 \alias{is.mtraced}
-\title{Check if a function has been mtraced.}
-\description{Check if a function has been mtraced.}
+\title{Check if a function has been 'mtrace'd.}
+\description{Check if a function has been \code{\link{mtrace}}d.}
 \usage{
 is.mtraced(f)
 }
@@ -13,4 +13,5 @@ is.mtraced( fff)
 mtrace( fff)
 is.mtraced( fff)
 }
+\seealso{\code{\link{mtrace}}}
 \keyword{debugging}

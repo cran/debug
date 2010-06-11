@@ -34,6 +34,7 @@ function( libname, pkgname){
     body( f) <- substitute( if( missing( val)) x else x <<- val, list( x=as.name( x)))
     environment( f) <- asNamespace( 'debug')
     makeActiveBinding( x, f, as.environment( 'package:debug'))
+    dont.lockBindings( x, 'debug', namespace.=FALSE)
   }    
 }
 
@@ -425,9 +426,13 @@ return( character( 0))
 function( thing, call.type) do.in.envir( envir=find.debug.HQ( FALSE), {
 # Trap non-logical first arguments to "if", "while", and non-subsettable arguments to "for" e.g. for( i in call( 'abc'))
 #cat( 'Checking legality in call.type', call.type, 'of', thing, '\n')
+
+# Can issue warning, or cause error, or neither, depending on getOption( 'warn')
+
   if( call.type %in% c( 'if', 'while') &&
-      (typeof( thing) %in% dodgy.if.while.types || is.na( as.logical( thing)[ 1])) )
-    message <- 'illegal if/while test'
+      ( (typeof( thing) %in% dodgy.if.while.types || is.na( as.logical( thing)[ 1])) ||
+        ( (length( thing) > 1) && (try( list( eval( substitute( if( thing) TRUE), envir=parent.frame()))) %is.a% 'try-error'))))
+    message <- 'illegal if/while test'            
   else if( call.type == 'for' && typeof( thing) %in% dodgy.for.counter.types)
     message <- 'illegal for-loop counter'
   else if( call.type == 'switch' && ( ! (typeof( thing) %in% valid.switch.types) || length( thing) != 1 ) )
@@ -639,9 +644,11 @@ return() }
     #  cat( 'Mode=', mode( command), '\n')
       command <- try2( list( eval( command, envir=frame)))
 
-      if( command %is.not.a% 'try-error') 
+      if( missing( command))
+        cat( '<missing>\n', file=debug.catfile())
+      else if( command %is.not.a% 'try-error') 
         printIfSmall( command[[1]], ofile=debug.catfile()) # unwrap list from 'try'
-       else
+      else
         .evaluated.OK. <<- FALSE # paranoid safety net; eOK _might_ have been set to TRUE before a crash!
     } else # length-0, presumably from line starting with a hash
       .system. <<- TRUE # so retval doesn't get set
@@ -678,13 +685,19 @@ function(ex, envir) {
 
 "eval.catching.errors" <-
 function(i, envir) do.in.envir( envir=find.debug.HQ( FALSE), {
+#  if( option.or.default( 'erk', FALSE)) {
+#    cat( "Warn: ", getOption( 'warn'), '\n')
+#    print( i)
+#  }
+
   # Thanks to Luke Tierney for this trick, which avoids "restart"
   j <- try2( list( value=eval( i, envir=envir))) # try2 traps interrupts as well as errors
   .evaluated.OK. <<- j %is.not.a% 'try-error'
   if( .evaluated.OK.) {
     j <- j$value
+    
     if( missing( j))
-      j <- delay( delay( formals( evaluator)$fname)) # avoid immediate trouble
+      j <- formals( evaluator)$fname # avoid immediate trouble
 return( j) } 
   else
 return( NULL)
@@ -713,6 +726,9 @@ break # and then return
     repeat { # Figure out if user input is possible, and if so keep processing commands until told to continue debugger
       if( .quit.debug.) { # set by user's call to q(), mapped to 'q.debug'; this may be inside child
         cat( '\rNo ', file=debug.catfile())
+#        opt <- options(show.error.messages=FALSE)
+#        cat( 'SEM=', opt$show.error.messages, '\n', file=debug.catfile())
+#				on.exit( options(opt), add=TRUE)
 stop( 'merely quitting mvb\'s debugger') }
 
       .evaluated.OK. <<- TRUE
@@ -747,11 +763,14 @@ stop( 'merely quitting mvb\'s debugger') }
       if( call.type %in% c( 'normal', 'if', 'for', 'while', 'switch') ) { # alternatives are {} break next
         try.j <- eval.catching.errors( expr[[ augment.for.eval( i, call.type) ]], envir=frame)
         if( .evaluated.OK.) {
-          j <- try.j
-          if( missing( j))
-            j <- delay( formals( evaluator)$fname) # FIX !!
-          if(.print.result.)
-            printIfSmall(j, ofile=debug.catfile())
+          if( missing( try.j)) {
+            j <- formals( evaluator)$fname # missing val
+            cat( '<missing>\n', file=debug.catfile())
+          } else {
+            j <- try.j
+            if(.print.result.)
+              printIfSmall(j, ofile=debug.catfile())
+          }
           .evaluated.OK. <<- check.legality( j, call.type) # illegal arg to if/while/for/switch
           if( !.evaluated.OK.)
             cat( 'Problem:', attr( .evaluated.OK., 'message'), '\n', file=debug.catfile())
@@ -807,11 +826,24 @@ function( create.if.not=TRUE ) {
 #    print( sys.frame( sys.parent()))
 #    cat( '\nparent.frame contents=')
 #    print( ls( sys.frame( sys.parent())))
+
+    ## Needs changing to make this a separate inheriting frame ##
     
     debug.HQ <- parent.frame()
+#cat( "Setting debug HQ:\n")
+#cat( 'sys.parent=', sys.parent())
+#print( sys.frame( sys.parent()))
+#print( debug.HQ)
+#cat( lsall( debug.HQ), '\n', sep=' ')
+    
     attr( debug.HQ, 'I.am.the.debug.HQ') <- TRUE
+#cat( 'after attr:\n')
+#print( debug.HQ)
     n.debug.HQ <- sys.parent()
     setup.debug.admin( nlocal=n.debug.HQ) 
+#cat( 'after admin:\n')
+#print( debug.HQ)
+    
   } else # doesn't exist, not supposed to create it
 return( FALSE)
 
@@ -940,7 +972,7 @@ function( nlocal=sys.parent(), input) mlocal({
 #    push.to.foreground( r.window.handle)
 
   cat( '\nD(' %&% frame.number %&% ')> ', file=debug.catfile())
-  input <- try( readLines( n=1, ok=FALSE))
+  input <- try2( readLines( n=1, ok=FALSE))
   if( (!missing( input)) && (input %is.not.a% 'try-error')) {
     if( nzchar( input) && debug.command.recall) {
       cat( input, '\n', sep='', append=TRUE, file=debug.hist.file)
@@ -1056,6 +1088,8 @@ function() do.in.envir( envir=find.debug.HQ( FALSE), {
 
     bp.list <- unlist( lapply( breakpoints, mark.bp), use.names=F)
     bps <- rep( FALSE, nl)
+#    cat( "nl=", nl, "length( bp.list)=", length( bp.list), 'n.names=', sum( names( line.list) != ''),
+#        '\n')
     bps[ names( line.list) != ''] <- bp.list
     for( i in index( bps))
       tkitemconfigure( show.bp, i-1, foreground='red', selectforeground='red')
@@ -1086,6 +1120,9 @@ function() do.in.envir( envir=find.debug.HQ( FALSE), {
   # and record successful launch
     .frames.$has.window.yet[ i.win] <<- TRUE
   }
+  
+  if( !is.null( debug.post.window.launch.hook <- getOption( 'debug.post.window.launch.hook')))
+    debug.post.window.launch.hook()
 #  cat( 'Launched OK\n')
 })
 
@@ -1108,12 +1145,16 @@ function( namespace.dest=NULL) {
 
     if( !is.null( namespace.dest)) {
       # Copy unexported functions into debug.HQ
+      # This is really a pretty dreadful way of doing things in modern R, and...
+      # ... I should change things to make debug.HQ a separate env inheriting asNamespace( debug)
+      # ... but still "owned" by the call stack and thus auto-zapped on return to prompt
+      
       debug.namespace <- asNamespace( 'debug')
       funs <- lsall( env=debug.namespace) %except% find.funs( 'package:debug')
       funs <- funs %except% lsall( env=namespace.dest)
+      funs <- funs[ sapply( funs, function( x) !is.environment( debug.namespace[[x]]))]
       for( ifun in funs)
         assign( x=ifun, value=debug.namespace[[ ifun]], envir=namespace.dest)
-        #getFromNamespace( ifun, debug.namespace), envir=namespace.dest)
     }
   }
   
@@ -1128,7 +1169,9 @@ function( sorted.out=TRUE, nlocal=sys.parent(), original.i, tryout) mlocal({
 
   original.i <- i # in case of failed assignment; this is new for 1.1
   if( sorted.out) { # Normal behaviour: try to move into a loop etc.
-    if(call.type == "for") {
+    if(call.type == "for") { # NB documented R behaviour when looping over a factor...
+      if( j %is.a% 'factor') 
+        j <- as.character( j) # as.integer before ~R2.9
       for.counters[[ ch.i]] <- j
       i <- c( i, 4)
       sorted.out <- FALSE } # so we set the counter
@@ -1205,9 +1248,15 @@ return( local.return())
         i <- i.parent } # sorted.out=FALSE so force a move
     else if( parent.call.type == '<-') {
       # This has to be a bit weird to prevent the call to '<-' from over-evaluating
-      callo <- call( '<-', expr[[ i.parent, 2]], call( 'quote', j))
-      tryout <- try2( list( eval( callo, envir=frame))) # list wrap new in 10/2008
-      .evaluated.OK. <<- (tryout %is.not.a% 'try-error') 
+      if( missing( j)){ # but presumably legally, e.g. via formals( fun)$arg.with.no.default
+        callo <- call( '<-', expr[[ i.parent, 2]], quote( formals( glm)$subset))
+        eval( callo, envir=frame)
+        .evaluated.OK. <<- TRUE
+      } else {
+        callo <- call( '<-', expr[[ i.parent, 2]], call( 'quote', j))
+        tryout <- try2( list( eval( callo, envir=frame))) # list wrap new in 10/2008
+        .evaluated.OK. <<- (tryout %is.not.a% 'try-error') 
+      }
       # was: .evaluated.OK. <<- missing( tryout) || (tryout %is.not.a% 'try-error')
       # not sure what the missing test was for, or how to re-write
       if( !.evaluated.OK.) {
@@ -1313,10 +1362,13 @@ stop( "Can't find " %&% fname)
         unlockBinding( fname, this.ff)
       assign( fname, f, envir=this.ff)
       if( locko) {
-        ow <- options( 'warn')
-        on.exit( options( ow))
-        options( warn=-1)
-        lockBinding( fname, this.ff)
+        ow <- getOption( 'warn')
+        try( {
+          options( warn=-1)
+          lockBinding( fname, this.ff)
+          }
+        )
+        options( warn=ow)
       }
     }
   }
@@ -1390,7 +1442,7 @@ function(x, ..., ofile=stdout()) {
   if( osx %is.a% 'try-error')
     osx <- NA
   if( !is.na( osx) && osx < option.or.default( 'threshold.debug.autoprint.size', 8192)) {
-    try.to.print <- try( list( capture.output( print(x, ...), file=ofile)))
+    try.to.print <- try2( list( capture.output( print(x, ...), file=ofile)))
     if( try.to.print %is.a% 'try-error')
       cat( "!! Couldn't successfully print result: ", c( try.to.print), "\n", file=ofile)
   } else {
@@ -1465,18 +1517,21 @@ function( nlocal=sys.parent()) mlocal({
       special, builtin, '...', any, expression, list, externalptr)
   valid.switch.types <- cq( character, logical, integer, double, complex)
 
-  # cat( 'Before make.locs:\n')
-  # print( sys.frames())
-  # print( ls( sys.frame(sys.nframe())))
-  # print( sys.frame( sys.nframe()))  
+#  cat( 'Before make.locs:\n')
+#  print( sys.frames())
+#  print( ls( sys.frame(sys.nframe())))
+#  print( sys.frame( sys.nframe()))  
+#
+#  nsd <- sys.frame( mvb.sys.nframe())
+#  print( nsd)
 
   # Command subs
   list.of.command.subs <- make.locs( namespace.dest=sys.frame( mvb.sys.nframe()))
   
-  # cat( 'After make.locs:\n')
-  # print( ls( sys.frame(sys.nframe())))
-  # print( sys.frames())
-  # print( sys.frame( sys.nframe()))  
+#  cat( 'After make.locs:\n')
+#  print( ls( sys.frame(sys.nframe())))
+#  print( sys.frames())
+#  print( sys.frame( sys.nframe()))  
 
   # Command recall
   # Could implement several options-- recall debug commands only while in debugger,
@@ -1513,23 +1568,7 @@ function( nlocal=sys.parent()) mlocal({
     else
       rogue.types[ i]
   }
-  
-  # MUST FIX "DELAY" BELOW-- BROKEN !!
-  # Next line to get around deprecation in R2.1, aaargh.
-  delay <- function (x, env = .GlobalEnv) .Internal(delay(substitute(x), env))
 
-#  try2 <- try
-#  if( !identical( body( try)[[2]][[1]], quote( tryCatch)))
-#    warning( "Can't catch ESC interrupts-- 'try' format has changed-- please notify MVB")
-#  else {
-#    interrupt.fun <- function( e) { 
-#        cat( '<Interrupted!>\n', file=debug.catfile()) 
-#        invisible( structure( 'Interrupt', class='try-error'))}
-#    body( try2)[[2]]$interrupt <- interrupt.fun
-#  }
-
-#       DON'T Make a copy of "tracees". This is really so that any on-the-fly traces aren't preserved
-#        tracees_ get( 'tracees', pos='mvb.session.info')
   # push.to.foreground( r.window.handle)  # BELIEVED OBSOLETE
 })
 
@@ -1615,7 +1654,9 @@ function( f) {
   env.f <- environment( f)
   attr.f <- attributes( f)
   formals( f) <- formals( body( f)[[3]])
-  body( f) <- list( body( f)[[4]]) # destroys attr & env
+  
+  # Next line: used to need the list(...) call, but this behaviour is changed in R 2.9+
+  body( f) <- if( as.numeric( R.version$minor) >= 9) body( f)[[4]] else list( body( f)[[4]]) 
   attributes( f) <- attr.f
   environment( f) <- env.f
   f

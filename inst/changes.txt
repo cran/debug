@@ -17,3 +17,5 @@
 2/4/2005: added 'debug.catfile' option to (by default) print to stderr() rather than stdout(); helps if 'sink' is in operation
 
 20/10/2008: added ESCAPE handling-- drops you back to the debugger prompt, rather than straight back to the terminal. (Unless the interrupt happens while you're in debug's own code-- need some muffleWarnings stuff.)
+
+28/10/2009: for-loop over factors now coerces to character; bug in replacement 'parent.frame' fixed; all references to 'delay' finally expunged (they were there only to help "legal" missing values).

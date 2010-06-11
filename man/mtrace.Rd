@@ -12,26 +12,26 @@ mtrace.off()
 check.for.tracees( where=1)
 }
 \arguments{
-\item{ fname}{quoted or unquoted function name}
-\item{ tracing}{TRUE to turn tracing on, FALSE to turn it off}
-\item{ char.fname}{(rarely used) if your function name is stored in a character object \code{x}, use \code{char.fname=x}}
-\item{ from}{where to start looking for \code{fname} (not usually needed)}
-\item{ where}{(character or integer) position in search path}
-\item{ update.tracees}{don't set this parameter! It's only for use by other functions}
-\item{ return.envs}{if TRUE, this will return a list of the environments where the function has been replaced by the \code{mtraced} version}
+\item{  fname}{quoted or unquoted function name}
+\item{  tracing}{TRUE to turn tracing on, FALSE to turn it off}
+\item{  char.fname}{(rarely used) if your function name is stored in a character object \code{x}, use \code{char.fname=x}}
+\item{  from}{where to start looking for \code{fname} (not usually needed)}
+\item{  where}{(character or integer) position in search path}
+\item{  update.tracees}{don't set this parameter! It's only for use by other functions}
+\item{  return.envs}{if TRUE, this will return a list of the environments where the function has been replaced by the \code{mtraced} version}
 }
 \details{
 \code{mtrace(myfun)} modifies the body code of \code{myfun}, and also stores debugging information about \code{myfun} in \code{tracees$myfun}. Next time the function is invoked, the modified debug-ready version will be called instead of the orginal. \code{mtrace} does not modify source code (or other) attributes, so \code{myfun} will "look" exactly the same afterwards. \code{mtrace(myfun,FALSE)} restores \code{myfun} to normal. \code{mtrace.off} unmtraces all mtraced functions (see below for exceptions).
 
-Because \code{mtrace} modifies function bodies (possibly in several places, if namespaced packages are involved), calling \code{save.image} or \code{save} while functions are still \code{mtrace}d is probably not a good idea-- if the saved image is reloaded in a new \R session, the debugger won't know how to handle the previously \code{mtrace}d functions, and an error message will be given if they are invoked. The \code{Save} and \code{Save.pos} functions in package \pkg{mvbutils} will get round this without your having to manually untrace and retrace functions.
+Because \code{mtrace} modifies function bodies (possibly in several places, if namespaced packages are involved), calling \code{save.image} or \code{save} while functions are still \code{mtrace}d is probably not a good idea-- if the saved image is reloaded in a new R session, the debugger won't know how to handle the previously \code{mtrace}d functions, and an error message will be given if they are invoked. The \code{Save} and \code{Save.pos} functions in package \pkg{mvbutils} will get round this without your having to manually untrace and retrace functions.
 
 If you do see a "maybe saved before being un-mtraced?" error message when \code{myfun} is invoked, all is not lost; you can restore \code{myfun} to health via \code{mtrace(myfun,F)}, or put it properly into debugging mode via \code{mtrace(myfun)}. \code{mtrace.off} won't work in such cases, because \code{myfun} isn't included in \code{tracees}.
 
-\code{mtrace} looks for a function in the following places: first in the frame stack (unless \code{from} has been set-- see below), then in the search path, then in all namespaces, then in all S3 methods tables. If several copies of a function are found, all will get modified (mtraced) to the \emph{same} code; ditto when unmtracing.
+\code{mtrace} looks for a function in the following places: first in the frame stack (unless \code{from} has been set-- see below), then in the search path, then in all namespaces, then in all S3 methods tables. If several copies of a function are found, all will get modified (mtraced) to the \bold{same} code; ditto when unmtracing.
 
-\code{mtrace} etc \emph{doesn't} (currently) handle S4 methods. However, I doubt there's any fundamental problem there (hopefully I will never have to find out)-- the first issue, though, is that S4 methods have mangled names. If you can work out what the mangled name is, then you can mtrace the "real" version and all may work.
+\code{mtrace} etc \bold{doesn't} (currently) handle S4 methods. However, I doubt there's any fundamental problem there (hopefully I will never have to find out)-- the first issue, though, is that S4 methods have mangled names. If you can work out what the mangled name is, then you can mtrace the "real" version and all may work.
 
-\code{check.for.tracees} checks for functions which have been \code{mtrace}d, but only in one directory. By contrast, \code{names(tracees)} will return all functions that are currently known to be \code{mtrace}d. However, unlike \code{check.for.tracees}, \code{names(tracees)} won't show functions that were saved during a previous \R session in an \code{mtrace}d state.
+\code{check.for.tracees} checks for functions which have been \code{mtrace}d, but only in one directory. By contrast, \code{names(tracees)} will return all functions that are currently known to be \code{mtrace}d. However, unlike \code{check.for.tracees}, \code{names(tracees)} won't show functions that were saved during a previous R session in an \code{mtrace}d state.
 
 \code{mtrace.off} will untrace all functions returned by \code{names( tracees)} and/or \code{check.for.tracees( 1)}.
 

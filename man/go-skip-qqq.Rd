@@ -4,7 +4,7 @@
 \alias{skip}
 \alias{qqq}
 \title{Flow control for debugger}
-\description{\code{go}, \code{skip} and \code{qqq} ONLY work inside the debugger, i.e. while you are paused at a D(\dots)> prompt during the execution of a function that has been \code{mtrace}d. \code{go} makes the debugger begn executing code continuously, without user intervention; \code{skip(n)} shifts the execution point; \code{qqq()} quits the debugger.}
+\description{\code{go}, \code{skip} and \code{qqq} ONLY work inside the debugger, i.e. while you are paused at a D(\dots)> prompt during the execution of a function that has been \code{\link{mtrace}}d. \code{go} makes the debugger begin executing code continuously, without user intervention; \code{skip(n)} shifts the execution point; \code{qqq()} quits the debugger.}
 \usage{
 go(line.no) # line.no can be missing
 skip(line.no)
@@ -18,7 +18,6 @@ qqq()
 
 \code{qqq()} quits the debugger, closing all code windows, and returns to the command prompt. No further code statements will be executed, which means no exit code either; take care with open files and connections.
 }
-\note{Previous versions of the debugger used \code{q()} to quit. With hindsight, this seems unwise, so I've changed it. However, calls to \code{q()} while debugging are still intercepted, and a warning is printed.}
-\seealso{ \code{\link{debug}}, \code{\link{mtrace}}, \code{\link{bp}}}
+\seealso{package \pkg{debug}, \code{\link{mtrace}}, \code{\link{bp}}}
 \author{Mark Bravington}
 \keyword{debugging}
