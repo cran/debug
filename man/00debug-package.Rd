@@ -51,14 +51,39 @@ You can debug several functions "at once" (e.g. if \code{f} calls \code{g}, you 
 
 For statements typed in at the D(\dots{})> prompt, only the first syntactically-complete R{} expression will be executed; thus, typing \code{a <- 1; a <- 2} will set \code{a} to 1, but typing \code{{ a <- 1; a <- 2}} will set \code{a} to 2.
 
-See section SPECIAL.FUNCTIONS for handling of \code{try}, \code{with}, \code{within}, \code{eval}, and \code{evalq}.
+See section SPECIAL.FUNCTIONS for handling of \code{try}, \code{with}, etc.
 
-S3 methods work fine with \code{\link{mtrace}}, but S4 methods don't unless you do something special. My suspicion is that they will work OK if you can somehow pass the true name of the method to \code{\link{mtrace}}, along with its environment using the \code{from} argument. This is probably fixable, but low priority unless I get lots of requests; I have no plans to write S4 methods, and hope not to have to debug other people's!
+See section METHODS for how to handle S3 methods (easy) and S4 methods (not).
 
 For further information, see R-news 3/3.
 }
+\section{Methods}{
+S3 methods work fine with \code{\link{mtrace}}; just do e.g. \code{mtrace( print.classofthing)}. Unsurprisingly, S4 methods are much more painful to work with. I've only done it once; the following approach worked in R{} 2.12, but probably isn't optimal. Suppose you have figured out that the offending call is something like \code{scrunge( x, y, z)}, where \code{scrunge} is the name of an S4 generic; e.g. you may have tried \code{mtrace( scrunge)}, and found yourself with a debug window containing a 1-line function \code{standardGeneric("scrunge")}. First, use \code{findFunction( "scrunge")} to work out which package contains the definition of \code{scrunge}-- say it's in package \pkg{scrungepack}. Next, you need to work out which specific \code{scrunge} method will be dispatched by \code{scrunge( x, y, z)}. Try this:
+
+\preformatted{
+selectMethod( "scrunge", signature=character())
+# Look for the 'attr(,"target")' line; it might be e.g.
+# attr(,"target")
+#   x    y
+#  "ANY" "ANY"
+}
+
+Now you know that it's the \code{x} and \code{y} args that will direct traffic (it could have been just \code{x}, or just \code{z}, or\dots{}). So do \code{class(x)} and \code{class(y)} to figure out what the classes are; say they are \code{matrix} and \code{character}. Now do
+
+\preformatted{
+selectMethod( "scrunge", sig=c( "matrix", "character"))
+}
+
+Hopefully you'll see another \code{attr(,"target")} line, which will tell you which method to \code{\link{mtrace}}. Suppose it's the same as before (ANY and ANY); then you need to mtrace the \code{ANY#ANY} method. (If only one argument was used for dispatching, there wouldn't be a hash symbol.) The following magic formula will do it:
+
+\preformatted{
+mtrace( 'ANY#ANY', from=environment( scrungepack:::scrunge)$.AllMTable)
+}
+
+Then you can proceed as usual. Note that the method that is first dispatched may end up dispatching other methods-- you will have to work out which yourself, and \code{\link{mtrace}} them accordingly. You can \code{\link{mtrace}} various functions in the \pkg{methods} package, e.g. \code{callGeneric}, which might help you track down what's going on. In short: good luck!
+}
 \section{Special functions}{
-Certain system functions with "code" arguments are handled specially in step-mode: currently \code{try}, \code{eval}, \code{evalq}, \code{with}, and \code{within}. In step-mode only, your code argument in these is stepped-into by default if it is more than a simple statement, using a new code window. In go-mode, and in step-mode if the default behaviour has been changed, these functions are handled entirely by R{}. Hence, if you are in go-mode and an error occurs in one of these statements, the debugger will stop at the \code{with} etc. statement, not inside it; but you can then step inside by pressing <ENTER>. The step-into-in-step-mode behaviour can be controlled globally using \code{\link{step.into.sysfuns}}. To avoid step-in at a specific line, you can also just use \code{\link{go}} to proceed to the following statement; this can be much faster than first stepping-in and then calling \code{\link{go}}, because R{} itself handles the evaluation.
+Certain system functions with "code" arguments are handled specially in step-mode: currently \code{try}, \code{suppressWarnings}, \code{eval}, \code{evalq}, \code{with}, and \code{within}. In step-mode only, your code argument in these is stepped-into by default if it is more than a simple statement, using a new code window. In go-mode, and in step-mode if the default behaviour has been changed, these functions are handled entirely by R{}. Hence, if you are in go-mode and an error occurs in one of these statements, the debugger will stop at the \code{with} etc. statement, not inside it; but you can then step inside by pressing <ENTER>. The step-into-in-step-mode behaviour can be controlled globally using \code{\link{step.into.sysfuns}}. To avoid step-in at a specific line, you can also just use \code{\link{go}} to proceed to the following statement; this can be much faster than first stepping-in and then calling \code{\link{go}}, because R{} itself handles the evaluation.
 
 To mimic the true behaviour of \code{try}, the debugger should really just return a \code{"try-error"} object if there is an error. However, that is probably not what you want when debugging. Instead, the debugger just behaves as usual with errors, i.e. it breaks into step-mode. If you do then want \code{try} to return the \code{try-error}, just as it would if you weren't debugging, type \code{return( last.try.error())}.
 
@@ -73,11 +98,11 @@ within( data.frame(), bad <- quote( symbols.not.allowed))
 }
 }
 \section{Options}{
-As of version 1.2.0, output is sent \emph{by default} to "stderr"; this means that you get to see the step-mode output even if the debuggee is redirecting "real" output (e.g. via \code{sink}). If you don't like this (and I believe Tinn-R doesn't), set \code{options( debug.catfile="stdout")}.
+As of version 1.2.0, output is sent \emph{by default} to \code{stderr()}; this means that you get to see the step-mode output even if the debuggee is redirecting "real" output (e.g. via \code{sink}). If you don't like this (and I believe Tinn-R doesn't), set \code{options( debug.catfile="stdout")}.
 
-Command recall is ON by default, but this means that anything typed while debugging will also be seen in \code{history()} after leaving the debugger. If this is a problem, set \code{options( debug.command.recall=FALSE)} (probably in \code{.First}).
+Command recall is ON by default, but this means that anything typed while debugging will also be seen in \code{history()} after leaving the debugger. If this is a problem, set \code{options( debug.command.recall=FALSE)}.
 
-In step mode, only objects with \code{object.size} < 8192 bytes will be printed in full by default; for larger objects, a summary is given instead. You can force printing of any individual object via \code{print}, but you can also increase (or decrease) the threshold to \code{X} bytes, by setting \code{options( threshold.debug.autoprint.size=X)}.
+There are two adjustable limits on what gets printed out in step mode (otherwise, your screen will often fill with junk, and displaying results may take several minutes). First, printing will be aborted if it takes longer than \code{getOption( "debug.print.time.limit")} seconds, which by default is 0.5 seconds. You might need to increase that, e.g. for displaying big help files in the browser. Also, setting a finite time limit cutoff overrides any other time limits that have been set with \code{setTimeLimit}; this can be prevented by setting \code{options( debug.print.time.limit=Inf)}. Second, by default only objects with \code{object.size} < 8192 bytes will be printed in full; for larger objects, a summary is given instead. You can force printing of any individual object via \code{print}, but you can also increase (or decrease) the threshold to \code{X} bytes, by setting \code{options( threshold.debug.autoprint.size=X)}. The \code{object.size} test isn't foolproof, as some minuscule objects occupy hectares of screen real estate and take ages to print, whereas some big objects print compactly and fast. In my own work, I set the "threshold.debug.autoprint.size" option to \code{Inf} and the time limit usually to 0.5 seconds.
 
 Various TCL/TK-related aspects of the code window can be altered:
 
@@ -91,12 +116,14 @@ Various TCL/TK-related aspects of the code window can be altered:
 }
 }
 \note{
-\bold{Display bugs}: There have been sporadic and unreproduceable display problems with the TCL/TK window (though, as of May 2010, I haven't experienced any for a couple of years). Sometimes the window frame will appear, but with garbled contents or no contents at all. With RTERM in MS-Windows, a couple of ALT-TABs and mouse clicks to change focus are sometimes necessary. In extremis, the window will eventually sort itself out if you manually minimize, maximize, and restore it-- admittedly an irritation. Although the problem seems less frequent these days, I'm not convinced it is fully solved.
+\subsection{Display bugs}{
+There have been sporadic and unreproduceable display problems with the TCL/TK window. Sometimes the window frame will appear, but with garbled contents or no contents at all. With RTERM in MS-Windows, a couple of ALT-TABs and mouse clicks to change focus are sometimes necessary. In extremis, the window will eventually sort itself out if you manually minimize, maximize, and restore it-- admittedly an irritation. Although the problem seems less frequent these days, I'm not convinced it is fully solved.
 
 If you encounter this problem, try setting \code{options(shakeup.debug.windows=TRUE)} (also in \code{.First}). The price paid for setting this option, is that window focus will switch away from R{} to the new code window when the latter is first created, which is mildly irritating. On MS-Windows, I have a fix for that too, but it requires a DLL written in Delphi not C, so I can't CRAN it; let me know if you are desperate.
 
 Apparently the \pkg{RGtk2} package doesn't play nicely with \code{debug}-- the debugging window displays a blank. I haven't checked this out, but would be grateful for advice.
-
+}
+\subsection{Emacs}{
 For ESS users: I'm not an Emacs user and so haven't tried ESS with the \pkg{debug} package myself, but a read-through of the ESS documentation suggests that at least one ESS variable may need changing to get the two working optimally, as shown below. Please check the ESS documentation for further details on these points (and see also \code{README.mvbutils} in the \pkg{mvbutils} package). I will update this helpfile when I have more info on what works.
 
 \itemize{
@@ -104,6 +131,9 @@ For ESS users: I'm not an Emacs user and so haven't tried ESS with the \pkg{debu
 \item Command recall probably won't work inside the debugger (or if it does, it's thanks to ESS rather than to R{}'s own command recall mechanism). It should be disabled by default; if you do get error messages about "history not available", make sure to set \code{options( debug.command.recall=FALSE)} before debugging.
 }
 }
-\seealso{\code{\link{mtrace}}, \code{\link{go}}, \code{\link{skip}}, \code{\link{qqq}}, \code{\link{bp}}, \code{\link{get.retval}}, \code{\link{mtrace.off}}, \code{\link{check.for.tracees}}, \code{\link{step.into.sysfuns}}, \code{\link{last.try.error}}}
+}
+\seealso{\code{\link{mtrace}}, \code{\link{go}}, \code{\link{skip}}, \code{\link{qqq}}, \code{\link{bp}}, \code{\link{get.retval}}, \code{\link{mtrace.off}}, \code{\link{check.for.tracees}}, \code{\link{step.into.sysfuns}}, \code{\link{last.try.error}}
+}
 \author{Mark Bravington}
-\keyword{debugging}
+\keyword{debugging
+}

@@ -49,7 +49,7 @@ function( libname, pkgname) {
       my.index.assign <- function( x, i, value) if( length( i)) `[[<-`( x, i, value) else value
     }
     environment( my.index) <- baseenv()
-    step.intos <- c( with=TRUE, within=TRUE, eval=TRUE, evalq=TRUE, try=TRUE)
+    step.intos <- c( with=TRUE, within=TRUE, eval=TRUE, evalq=TRUE, try=TRUE, suppressWarnings=TRUE)
   }, asNamespace( pkgname)) #environment( sys.function()))
   dont.lockBindings( c( 'tracees', 'step.intos'), pkgname)
   
@@ -219,15 +219,18 @@ function( expr, width=options()$width, numbering=TRUE, cat.on.exit=FALSE,
 
     if( i[ length( i)] != 1 && call.above=='switch') { # need to insert line with switch option
       add.to.last.line( ',')
-      if( i[ length( i)] < length( expr[[ clip( i)]]) )
+      if( i[ length( i)] <= length( expr[[ clip( i)]]) )
         line.list <- c( line.list, tabs(-1) %&% "'" %&% names( expr[[ clip( i)]])[ i[ length( i)] ] %&% "' = ")
+      # If last elt of switch is empty, replace with NULL
+      if( i[ length( i)] == length( expr[[ clip( i)]]) && is.name( expr[[i]]) && !nzchar( expr[[i]]))
+        expr[[clip(i)]][ tail( i, 1)]  <- list( NULL)
     } # if inside "switch"
 
     if( mode( expr[[ i]])=='(' || !is.call( expr[[ i]]) ) { 
       # ...first test is because is.call( '(a)') is TRUE but mode='(' !!
   #   SYMBOL or PRIMITIVE element-- or '('ed thing
       anything.to.add <- deparse1( expr[[ i]])
-      if( nchar( anything.to.add)) # won't be in e.g. empty { } or switch( ..., a=, ...)
+      if( nzchar( anything.to.add)) # won't be in e.g. empty { } or switch( ..., a=, ...)
         line.list <- c( line.list, tabs() %&% anything.to.add)
     } else {
          call.type <- expr[[ c( i, 1)]]
@@ -303,6 +306,7 @@ function( expr, width=options()$width, numbering=TRUE, cat.on.exit=FALSE,
          'with' =,
          'within' =,
          'try' =,
+         'suppressWarnings' =,
          'eval' =,
          'evalq' = {
               default.update.line.list()
@@ -549,7 +553,7 @@ function( expr, envir = parent.frame(), enclos = if (is.list(envir) ||
   assign( eval.name, f.eval)
   mtrace( char.fname=eval.name)
   on.exit( try( mtrace( char.fname=eval.name, tracing=FALSE), silent=TRUE))
-  
+
   # Is it worth a separate window?
   mc <- mvb.match.call()  
   if( tracees[[ eval.name]]$n > 2) {
@@ -716,6 +720,16 @@ stop( "Can't \"return\": no function to return from because \"on.exit\" code is 
 
 "debug.retval" <-
 function() get( 'j', envir=sys.frame( find.active.control.frame()))
+
+
+"debug.suppressWarnings" <-
+function( expr) {
+  mc <- mvb.match.call()
+  mc[[1]] <- quote( debug:::debug.eval.guts)
+  mc$fun.name <- 'suppressWarnings({'
+  mc$expr <- call( 'quote', substitute( expr))
+  suppressWarnings( eval( mc, mvb.parent.frame()))
+}
 
 
 "debug.sys.on.exit" <-
@@ -1489,10 +1503,11 @@ function( sorted.out=TRUE, nlocal=sys.parent(), original.i, tryout) mlocal({
       if( is.na( jj) || jj<1 || jj>swlen-2) {
         j <- NULL
         sorted.out <- FALSE } # move to expr after switch
-      else { # find first non-null expression at or after matched position
+      else { # find first non-missing expression at or after matched position
         jj <- jj+2
-        while( jj<swlen && is.name( eij <- expr[[ c( i, jj)]]) &&
-            !nzchar( as.character( eij)))
+        # Have to avoid evaluating missing args
+        while( jj<swlen && is.name( expr[[ c( i, jj)]]) &&
+            !nzchar( expr[[ c(i,jj)]]))
           jj <- jj+1
         i <- c( i, jj)
       } }
@@ -1591,6 +1606,7 @@ stop( "Can't find " %&% fname)
     f <- get( char.fname, ff[[1]])
     old.env <- environment( f)
     old.attr <- attributes( f)
+    old.isS4 <- isS4( f)
   }
 
   if( tracing) {
@@ -1650,6 +1666,8 @@ stop( "Can't find " %&% fname)
   if( !is.null( f)) { # IE we need to save f
     environment( f) <- old.env
     attributes( f) <- old.attr
+    if( old.isS4)
+      f <- asS4( f)
 
     # Now check whether the version being saved is in the temporary frame stack
     if( any( sapply( sys.frames(), identical, y=ff[[1]])))
@@ -1746,9 +1764,13 @@ function(x, ..., ofile=stdout()) {
     # Code below is bad because "Error..." is printed even when it's just taking too long
     # Also, would be nice to preserve existing time limits if any... somehow...
     
-    setTimeLimit( Inf, getOption( 'debug.print.time.limit', 0.5), TRUE)
+    tl <- getOption( 'debug.print.time.limit', 0.5)
+    if( is.finite( tl))
+      setTimeLimit( Inf, tl, TRUE)
     try.to.print <- try2( list( capture.output( print(x, ...), file=ofile)))
-    setTimeLimit( Inf, Inf, TRUE)
+    if( is.finite( tl))
+      setTimeLimit( Inf, Inf, TRUE)
+      
     print.obj.info <- FALSE
     if( try.to.print %is.a% 'try-error') {
       if( grepl( 'reached elapsed time limit', c( try.to.print))) {
@@ -1943,8 +1965,9 @@ function( title, nlocal=sys.parent(), nl, screen.pos, font, height, width, i) ml
 
     bp.list <- unlist( lapply( breakpoints, mark.bp), use.names=F)
     bps <- rep( FALSE, nl)
-    # cat( "nl=", nl, "length( bp.list)=", length( bp.list), 'n.names=', 
-    #     sum( names( line.list) != ''), '\n')
+#cat( '***Lines:', paste( names( line.list), line.list, sep='#'), '***', sep='\n')
+#cat( "nbreaks", length( breakpoints), "nl=", nl, "length( bp.list)=", length( bp.list), 'n.names=', 
+#sum( names( line.list) != ''), '\n')
     bps[ names( line.list) != ''] <- bp.list
   
     for( i in index( bps))
