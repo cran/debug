@@ -53,12 +53,12 @@ For statements typed in at the D(\dots{})> prompt, only the first syntactically-
 
 See section SPECIAL.FUNCTIONS for handling of \code{try}, \code{with}, etc.
 
-See section METHODS for how to handle S3 methods (easy) and S4 methods (not).
+See section METHODS for how to handle S3 methods (easy), reference class methods (pretty easy), and S4 methods (not easy).
 
 For further information, see R-news 3/3.
 }
 \section{Methods}{
-S3 methods work fine with \code{\link{mtrace}}; just do e.g. \code{mtrace( print.classofthing)}. Unsurprisingly, S4 methods are much more painful to work with. I've only done it once; the following approach worked in R{} 2.12, but probably isn't optimal. Suppose you have figured out that the offending call is something like \code{scrunge( x, y, z)}, where \code{scrunge} is the name of an S4 generic; e.g. you may have tried \code{mtrace( scrunge)}, and found yourself with a debug window containing a 1-line function \code{standardGeneric("scrunge")}. First, use \code{findFunction( "scrunge")} to work out which package contains the definition of \code{scrunge}-- say it's in package \pkg{scrungepack}. Next, you need to work out which specific \code{scrunge} method will be dispatched by \code{scrunge( x, y, z)}. Try this:
+S3 methods work fine with \code{\link{mtrace}}; just do e.g. \code{mtrace( print.classofthing)}. Reference class methods aren't too bad either--- see \code{?mtrace} for details. Unsurprisingly, S4 methods are much more painful to work with. I've only done it once; the following approach worked in R{} 2.12, but probably isn't optimal. Suppose you have figured out that the offending call is something like \code{scrunge( x, y, z)}, where \code{scrunge} is the name of an S4 generic; e.g. you may have tried \code{mtrace( scrunge)}, and found yourself with a debug window containing a 1-line function \code{standardGeneric("scrunge")}. First, use \code{findFunction( "scrunge")} to work out which package contains the definition of \code{scrunge}-- say it's in package \pkg{scrungepack}. Next, you need to work out which specific \code{scrunge} method will be dispatched by \code{scrunge( x, y, z)}. Try this:
 
 \preformatted{
 selectMethod( "scrunge", signature=character())
@@ -114,22 +114,24 @@ Various TCL/TK-related aspects of the code window can be altered:
 \item \code{debug.screen.pos} defaults to "+5-5" for BL corner; try "-5-5" for BR, "-5+5" for TR, "+5+5" for TL.
 \item \code{debug.fg} is foreground text colour, defaulting to \code{black}
 }
+
+If option \code{debug.wordstar.keys} is TRUE, various somewhat Wordstar-like key-bindings are provided: CTRL-E and CTRL-X to move blue selection up and down, CTRL-D and CTRL-S to scroll right/left, CTRL-W and CTRL-Z to scroll up/down, CTRL-R and CTRL-C to scroll up/down one page, and CTRL-K C to copy the current blue line to the clipboard (since CTRL-C has acquired a different meaning). Now that I've figured out how to add key bindings (sort of), more might appear in future.
 }
-\note{
-\subsection{Display bugs}{
+\section{Display bugs}{
 There have been sporadic and unreproduceable display problems with the TCL/TK window. Sometimes the window frame will appear, but with garbled contents or no contents at all. With RTERM in MS-Windows, a couple of ALT-TABs and mouse clicks to change focus are sometimes necessary. In extremis, the window will eventually sort itself out if you manually minimize, maximize, and restore it-- admittedly an irritation. Although the problem seems less frequent these days, I'm not convinced it is fully solved.
+
+Note: I was getting this problem all the time with R{} 2.13, after not having seen it at all since about R{} 2.8. It now seems OK again after making some random changes to the code; whatever the real problem is, it's probably not permanently fixed.
 
 If you encounter this problem, try setting \code{options(shakeup.debug.windows=TRUE)} (also in \code{.First}). The price paid for setting this option, is that window focus will switch away from R{} to the new code window when the latter is first created, which is mildly irritating. On MS-Windows, I have a fix for that too, but it requires a DLL written in Delphi not C, so I can't CRAN it; let me know if you are desperate.
 
 Apparently the \pkg{RGtk2} package doesn't play nicely with \code{debug}-- the debugging window displays a blank. I haven't checked this out, but would be grateful for advice.
 }
-\subsection{Emacs}{
-For ESS users: I'm not an Emacs user and so haven't tried ESS with the \pkg{debug} package myself, but a read-through of the ESS documentation suggests that at least one ESS variable may need changing to get the two working optimally, as shown below. Please check the ESS documentation for further details on these points (and see also \code{README.mvbutils} in the \pkg{mvbutils} package). I will update this helpfile when I have more info on what works.
+\section{Emacs}{
+For ESS users: I'm not an Emacs user and so haven't tried ESS with the \pkg{debug} package myself, but a read-through of the ESS documentation suggests that at least one ESS variable may need changing to get the two working optimally, as shown below. Please check the ESS documentation for further details on these points (and see also \code{?mvbutils}). I will update this helpfile when I have more info on what works.
 
 \itemize{
 \item The prompt will change when the debugger is running, so you may want to change "inferior-ess-prompt". Prompts will always be of the form D(XXX)> where XXX is a positive integer.
 \item Command recall probably won't work inside the debugger (or if it does, it's thanks to ESS rather than to R{}'s own command recall mechanism). It should be disabled by default; if you do get error messages about "history not available", make sure to set \code{options( debug.command.recall=FALSE)} before debugging.
-}
 }
 }
 \seealso{\code{\link{mtrace}}, \code{\link{go}}, \code{\link{skip}}, \code{\link{qqq}}, \code{\link{bp}}, \code{\link{get.retval}}, \code{\link{mtrace.off}}, \code{\link{check.for.tracees}}, \code{\link{step.into.sysfuns}}, \code{\link{last.try.error}}
