@@ -38,6 +38,8 @@
 27/7/2010: bug fix
  - couldn't qqq() when mtracee was called by 'try'-- now uses a new error class that 'try' shouldn't catch
 
+1/12/2011: "<missing>" only printed if in step mode. "<invisible>" printed for invisible! 'suppressWarnings' now handled as per 'eval' etc.
 
+23/4/2012: finally added easy in-package debugging, via eg 'mtrace(mypack:::myfun)'; also for functions that are in a list or environment, via 'mtrace(mything$myfun)'.
 
-
+7/9/2012: now handles 'eval.parent' properly.

@@ -1,6 +1,7 @@
 export( "bp",
 "check.for.tracees",
 "debug.C",
+"debug.eval",
 "fun.locator",
 "get.retval",
 "go",
@@ -10,8 +11,7 @@ export( "bp",
 "mtrace.off",
 "qqq",
 "skip",
-"step.into.sysfuns"
-)
-import( mvbutils)
+"step.into.sysfuns")
 import( tcltk)
+import( mvbutils)
 

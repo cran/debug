@@ -4,6 +4,8 @@
 \docType{package}
 \title{How to use the debug package}
 \description{
+\bold{Update:} as of v1.2.70, I think I may finally have a general-purpose fix for the tcltk bug that has caused display woes for many \code{debug} users. See \bold{Display bugs} below.
+
 \code{debug} is an alternative to \code{trace} and \code{browser}, offering:
 
 \itemize{
@@ -20,7 +22,7 @@ Even if you don't write functions, or even if you don't write buggy functions, y
 
 Debugging your function \code{f} is a two-stage process. First, call \code{mtrace(f)} to store debugging information on \code{f}, and to overwrite \code{f} with a debug-ready version that will call the debugger itself. Second, do whatever you normally do at the command prompt to invoke \code{f}. This is often a direct call to \code{f}, but can be any command that eventually results in \code{f} being invoked. [The third, fourth, etc. stages, in which you actually fix the problem, are not covered here!]
 
-When \code{f} is invoked, a window will appear at the bottom of the screen, showing the code of \code{f} with a highlight on the first numbered line. (There is also an asterisk in the far left hand column of the same row, showing that there's a breakpoint.) The command prompt in R{} will change to "D(\dots{})> ", showing that you are "inside" a function that is being debugged. The debugger is now in "step mode". Anything you type will be evaluated in the frame of the function-- this includes assignments and creation of new variables. If you just type <ENTER>, the highlighted statement in \code{f} will be executed. The result of the statement will be printed in the R{} command window, and the highlight will (probably) move in the \code{f} code window.
+When \code{f} is invoked, a window will appear at the bottom of the screen, showing the code of \code{f} with a highlight on the first numbered line. (There is also an asterisk in the far left hand column of the same row, showing that there's a breakpoint.) The command prompt in R{} will change to "D(...)> ", showing that you are "inside" a function that is being debugged. The debugger is now in "step mode". Anything you type will be evaluated in the frame of the function-- this includes assignments and creation of new variables. If you just type <ENTER>, the highlighted statement in \code{f} will be executed. The result of the statement will be printed in the R{} command window, and the highlight will (probably) move in the \code{f} code window.
 
 To progress through the code of \code{f}, you can keep pressing <ENTER>, but you can also type \code{go()} to put the debugger into "go mode", whereupon it will keep executing code statements without manual intervention. In "go mode", nothing will be printed in the command window (except if there are \code{cat} or \code{print} calls in the function code) until either:
 
@@ -31,7 +33,7 @@ To progress through the code of \code{f}, you can keep pressing <ENTER>, but you
 \item a breakpoint is triggered.
 }
 
-In the first case, control is returned to the normal R{} command prompt, just as if the debugger had not been used. In the other cases, the D(\dots{})> prompt will return and the line associated with the error / interrupt / breakpoint will be highlighted in the code window. You are then back in step mode. If there was an error, you can type statement(s) that will cause the error not to happen when the highlighted line executes again, or you can move the highlighted execution point to another line number by calling \code{\link{skip}}. Execution carries on quite normally after errors, just as if the offending statement had been wrapped in a \code{try} call. If your function eventually exits normally (i.e. not via \code{qqq()}, as described next), it will be as if the error never happened (though the error message(s) will be displayed when the R{} command prompt returns).
+In the first case, control is returned to the normal R{} command prompt, just as if the debugger had not been used. In the other cases, the D(...)> prompt will return and the line associated with the error / interrupt / breakpoint will be highlighted in the code window. You are then back in step mode. If there was an error, you can type statement(s) that will cause the error not to happen when the highlighted line executes again, or you can move the highlighted execution point to another line number by calling \code{\link{skip}}. Execution carries on quite normally after errors, just as if the offending statement had been wrapped in a \code{try} call. If your function eventually exits normally (i.e. not via \code{qqq()}, as described next), it will be as if the error never happened (though the error message(s) will be displayed when the R{} command prompt returns).
 
 When in step mode, you can finish debugging and return to the normal R{} command prompt by typing \code{qqq()}. If you type <ESC> while in go mode, you should be returned to step mode, but sometimes you may be dumped back at the R{} command prompt (this is on to-be-fixed list), and sometimes there will be no immediate effect (e.g. if C code is running).
 
@@ -49,7 +51,7 @@ When you want to restore \code{f} to its normal non-debugging state (and you are
 
 You can debug several functions "at once" (e.g. if \code{f} calls \code{g}, you can \code{\link{mtrace}} both \code{f} and \code{g}, with \code{mtrace(g)} called either inside or outside the debugger), causing several code windows to be open simultaneously. If \code{f} is called again inside \code{f} (either via some statement in \code{f}, or from something you type in step mode), another \code{f} code window will open. The number in the window title is the frame number, and the currently-active frame number is shown in the D(\dots{})> prompt.
 
-For statements typed in at the D(\dots{})> prompt, only the first syntactically-complete R{} expression will be executed; thus, typing \code{a <- 1; a <- 2} will set \code{a} to 1, but typing \code{{ a <- 1; a <- 2}} will set \code{a} to 2.
+For statements typed in at the D(...)> prompt, only the first syntactically-complete R{} expression will be executed; thus, typing \code{a <- 1; a <- 2} will set \code{a} to 1, but typing \code{{ a <- 1; a <- 2}} will set \code{a} to 2.
 
 See section SPECIAL.FUNCTIONS for handling of \code{try}, \code{with}, etc.
 
@@ -61,23 +63,23 @@ For further information, see R-news 3/3.
 S3 methods work fine with \code{\link{mtrace}}; just do e.g. \code{mtrace( print.classofthing)}. Reference class methods aren't too bad either--- see \code{?mtrace} for details. Unsurprisingly, S4 methods are much more painful to work with. I've only done it once; the following approach worked in R{} 2.12, but probably isn't optimal. Suppose you have figured out that the offending call is something like \code{scrunge( x, y, z)}, where \code{scrunge} is the name of an S4 generic; e.g. you may have tried \code{mtrace( scrunge)}, and found yourself with a debug window containing a 1-line function \code{standardGeneric("scrunge")}. First, use \code{findFunction( "scrunge")} to work out which package contains the definition of \code{scrunge}-- say it's in package \pkg{scrungepack}. Next, you need to work out which specific \code{scrunge} method will be dispatched by \code{scrunge( x, y, z)}. Try this:
 
 \preformatted{
-selectMethod( "scrunge", signature=character())
-# Look for the 'attr(,"target")' line; it might be e.g.
-# attr(,"target")
-#   x    y
-#  "ANY" "ANY"
+  selectMethod( "scrunge", signature=character())
+  # Look for the 'attr(,"target")' line; it might be e.g.
+  # attr(,"target")
+  #   x    y
+  #  "ANY" "ANY"
 }
 
-Now you know that it's the \code{x} and \code{y} args that will direct traffic (it could have been just \code{x}, or just \code{z}, or\dots{}). So do \code{class(x)} and \code{class(y)} to figure out what the classes are; say they are \code{matrix} and \code{character}. Now do
+Now you know that it's the \code{x} and \code{y} args that will direct traffic (it could have been just \code{x}, or just \code{z}, or...). So do \code{class(x)} and \code{class(y)} to figure out what the classes are; say they are \code{matrix} and \code{character}. Now do
 
 \preformatted{
-selectMethod( "scrunge", sig=c( "matrix", "character"))
+  selectMethod( "scrunge", sig=c( "matrix", "character"))
 }
 
 Hopefully you'll see another \code{attr(,"target")} line, which will tell you which method to \code{\link{mtrace}}. Suppose it's the same as before (ANY and ANY); then you need to mtrace the \code{ANY#ANY} method. (If only one argument was used for dispatching, there wouldn't be a hash symbol.) The following magic formula will do it:
 
 \preformatted{
-mtrace( 'ANY#ANY', from=environment( scrungepack:::scrunge)$.AllMTable)
+  mtrace( 'ANY#ANY', from=environment( scrungepack:::scrunge)$.AllMTable)
 }
 
 Then you can proceed as usual. Note that the method that is first dispatched may end up dispatching other methods-- you will have to work out which yourself, and \code{\link{mtrace}} them accordingly. You can \code{\link{mtrace}} various functions in the \pkg{methods} package, e.g. \code{callGeneric}, which might help you track down what's going on. In short: good luck!
@@ -94,7 +96,7 @@ Note that the code window for \code{with}, \code{eval}, etc. contains an on-exit
 \code{within} is more complicated than the others, and two extra code windows are currently used: one for the code of \code{within} itself, and one for your statement. The operation of \code{within} itself is not usually very interesting, so the debugger does not pause except at the end of it, unless there is an error. Errors can occur during the updating of your object, which happens after your expression has been evaluated, e.g. from
 
 \preformatted{
-within( data.frame(), bad <- quote( symbols.not.allowed))
+  within( data.frame(), bad <- quote( symbols.not.allowed))
 }
 }
 \section{Options}{
@@ -118,6 +120,8 @@ Various TCL/TK-related aspects of the code window can be altered:
 If option \code{debug.wordstar.keys} is TRUE, various somewhat Wordstar-like key-bindings are provided: CTRL-E and CTRL-X to move blue selection up and down, CTRL-D and CTRL-S to scroll right/left, CTRL-W and CTRL-Z to scroll up/down, CTRL-R and CTRL-C to scroll up/down one page, and CTRL-K C to copy the current blue line to the clipboard (since CTRL-C has acquired a different meaning). Now that I've figured out how to add key bindings (sort of), more might appear in future.
 }
 \section{Display bugs}{
+\bold{Update:} in v1.2.70, try setting \code{options( shakeup.debug.windows=TRUE)} if you have tcltk display woes. Please let me know if this \bold{doesn't} solve it for you.
+
 There have been sporadic and unreproduceable display problems with the TCL/TK window. Sometimes the window frame will appear, but with garbled contents or no contents at all. With RTERM in MS-Windows, a couple of ALT-TABs and mouse clicks to change focus are sometimes necessary. In extremis, the window will eventually sort itself out if you manually minimize, maximize, and restore it-- admittedly an irritation. Although the problem seems less frequent these days, I'm not convinced it is fully solved.
 
 Note: I was getting this problem all the time with R{} 2.13, after not having seen it at all since about R{} 2.8. It now seems OK again after making some random changes to the code; whatever the real problem is, it's probably not permanently fixed.

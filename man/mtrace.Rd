@@ -7,15 +7,15 @@
 \description{\code{mtrace} sets or clears debugging mode for a function; \code{mtrace.off} clears debugging mode for all functions; \code{check.for.tracees} shows which functions are in debugging mode.
 }
 \usage{
-# Usual: mtrace( fname) or mtrace( fname, F)
+# Usual: mtrace( fname) or mtrace( fname, F) or mtrace( apackage:::afunction)
 mtrace( fname, tracing=TRUE, char.fname, from=mvb.sys.parent(), update.tracees=TRUE, return.envs=FALSE)
 mtrace.off()
 check.for.tracees( where=1)
 }
 \arguments{
-\item{  fname}{quoted or unquoted function name}
+\item{  fname}{quoted or unquoted function name, or unquoted reference to function in package (via \code{::} or \code{:::}) or list/environment (via \code{$})}
 \item{  tracing}{TRUE to turn tracing on, FALSE to turn it off}
-\item{  char.fname}{(rarely used) if your function name is stored in a character object \code{x}, use \code{char.fname=x}}
+\item{  char.fname}{(rarely used) if your function name is stored in a character object \code{x}, use \code{char.fname=x}. If you want to \emph{turn off} tracing while doing so, \code{mtrace( char=x, F)} won't work because of argument matching rules; you need \code{mtrace( char.fname=x, tracing=F)}.}
 \item{  from}{where to start looking for \code{fname} (not usually needed)}
 \item{  where}{(character or integer) position in search path}
 \item{  update.tracees}{don't set this parameter! It's only for use by other functions}
@@ -47,26 +47,26 @@ If \code{myfun} has been defined in a namespaced package, then there may be seve
 If \code{mtrace(bar)} is called while function \code{foo} is being debugged (\code{mtrace(foo)} having previously been called), and \code{bar} has been redefined within \code{foo} or a parent environment of \code{foo}, then only the redefined copy of \code{bar} will be \code{mtrace}d.
 }
 \subsection{S4 and reference class methods}{
-S4 methods can be \code{mtrace}d, though it's currently clunky; see \code{package?debug}. Reference class methods can be \code{mtrace}d easily after an object has been instantiated. You might call this "object-level" mtracing, because it only works for one object of each class at a time. To \code{mtrace} e.g. the \code{edit} method in the example for "?ReferenceClasses", just do:
+S4 methods can be \code{mtrace}d, but like much about S4 it's clunky; see \code{package?debug}. Reference class methods can be \code{mtrace}d easily after an object has been instantiated. You might call this "object-level" mtracing, because it only works for one object of each class at a time. To \code{mtrace} e.g. the \code{edit} method in the example for "?ReferenceClasses", just do:
 
 \preformatted{
-mtrace( edit, from=xx) # NB will force a method into existence even if it's not been invoked yet
-mtrace( edit, from=xx, FALSE) # to clear it; mtrace.off() won't work properly
+  mtrace( edit, from=xx) # NB will force a method into existence even if it's not been invoked yet
+  mtrace( edit, from=xx, FALSE) # to clear it; mtrace.off() won't work properly
 }
 
 You can also do "class-level" mtracing, so that all subsequently-created objects of that class will use the \code{mtrace}d version. Just do this:
 
 \preformatted{
-mtrace( edit, from=mEditor$def@refMethods)
-xx <- mEditor$new( ...)
-mtrace( edit, from=mEditor$def@refMethods, FALSE) # to clear it; mtrace.off() won't work properly
+  mtrace( edit, from=mEditor$def@refMethods)
+  xx <- mEditor$new( ...)
+  mtrace( edit, from=mEditor$def@refMethods, FALSE) # to clear it; mtrace.off() won't work properly
 }
 
 In the "class-level" case, \code{xx} will still have an \code{mtrace}d version of \code{edit} even after the \code{mtrace( from=mEditor..., FALSE)}. You'll need to use the "object-level" technique to clear it.
 
 As of April 2011, methods are only set up inside a ref-class object when they are first \emph{accessed}, not when the object is created. \code{mtrace} (actually \code{\link{fun.locator}}) works round this.
 }
-\subsection{Limitations}{Probably many; but the main one I'm aware of, is the inability to have \code{mtrace} on simultaneously for two functions that have the same name but that have different bodies and live in difference places. In theory, the solution is for me to incorporate "location" into the function-level debug info in \code{mtracees}, but I've not been able to figure out a good general-purpose way to do so. If this describes your particular debugging hell, you certainly have my sympathy\dots{}
+\subsection{Limitations}{Probably many; but the main one I'm aware of, is the inability to have \code{mtrace} on simultaneously for two functions that have the same name but that have different bodies and live in different places. In theory, the solution is for me to incorporate "location" into the function-level debug info in \code{mtracees}, but I've not been able to figure out a good general-purpose way to do so. If this describes your particular debugging hell, you certainly have my sympathy\dots{}
 }
 }
 \value{
@@ -82,6 +82,7 @@ glm(stupid.args) # voila le debugger
 qqq() # back to command prompt
 mtrace( glm, FALSE)
 mtrace.off() # turns it off for all functions
+mtrace( debug:::setup.debug.admin) # woe betide ye
 }
 }
 \keyword{debugging
